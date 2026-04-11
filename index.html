@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>WeirdFaces</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>WeirdFaces</h1>
+      </header>
+
+      <div id="camera-container">
+        <video id="video" playsinline autoplay muted></video>
+        <canvas id="canvas"></canvas>
+        <div id="loading">
+          <div class="spinner"></div>
+          <p>Loading face detector...</p>
+        </div>
+      </div>
+
+      <div id="filters">
+        <button class="filter-btn active" data-filter="none">None</button>
+        <button class="filter-btn" data-filter="glasses">Glasses</button>
+        <button class="filter-btn" data-filter="bunny">Bunny</button>
+        <button class="filter-btn" data-filter="hat">Hat</button>
+        <button class="filter-btn" data-filter="big-nose">Big Nose</button>
+        <button class="filter-btn" data-filter="big-eyes">Big Eyes</button>
+        <button class="filter-btn" data-filter="tiny-mouth">Tiny Mouth</button>
+      </div>
+
+      <button id="snap-btn">📸 Snap</button>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
