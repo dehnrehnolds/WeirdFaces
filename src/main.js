@@ -46,7 +46,7 @@ async function loadDetector() {
       delegate: 'GPU',
     },
     runningMode: 'VIDEO',
-    numFaces: 1,
+    numFaces: 2,
   })
 }
 
@@ -64,8 +64,8 @@ function renderLoop() {
 
   if (detector && video.readyState >= 2) {
     const results = detector.detectForVideo(video, performance.now())
-    if (results.faceLandmarks?.length > 0) {
-      drawFilter(ctx, w, h, results.faceLandmarks[0], activeFilter)
+    for (const face of (results.faceLandmarks ?? [])) {
+      drawFilter(ctx, w, h, face, activeFilter)
     }
   }
 

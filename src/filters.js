@@ -87,14 +87,21 @@ export function drawFilter(ctx, w, h, landmarks, filter) {
     case 'big-eyes':   drawBigEyesWarp(ctx, w, h, landmarks); break
     case 'big-mouth':  drawBigMouthWarp(ctx, w, h, landmarks); break
     case 'tiny-mouth': withMirror(ctx, w, () => drawTinyMouth(ctx, w, h, landmarks)); break
+    case 'wow-face': {
+      // Take ONE snapshot so both warps sample clean, undistorted pixels
+      const src = snapshot(ctx.canvas)
+      drawBigEyesWarp(ctx, w, h, landmarks, src)
+      drawBigMouthWarp(ctx, w, h, landmarks, src)
+      break
+    }
     default: break
   }
 }
 
 // ─────────────────────────────────────────
 // BIG EYES — zooms actual pixels, masked to the eye outline shape
-function drawBigEyesWarp(ctx, w, h, landmarks) {
-  const src = snapshot(ctx.canvas)
+function drawBigEyesWarp(ctx, w, h, landmarks, src = null) {
+  src = src ?? snapshot(ctx.canvas)
 
   const eyes = [
     { contour: LEFT_EYE_CONTOUR,  outer: 33,  inner: 133 },
@@ -118,8 +125,8 @@ function drawBigEyesWarp(ctx, w, h, landmarks) {
 }
 
 // BIG MOUTH — zooms actual pixels, masked to the lip outline shape
-function drawBigMouthWarp(ctx, w, h, landmarks) {
-  const src = snapshot(ctx.canvas)
+function drawBigMouthWarp(ctx, w, h, landmarks, src = null) {
+  src = src ?? snapshot(ctx.canvas)
 
   const lc = landmarks[61]
   const rc = landmarks[291]
