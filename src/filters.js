@@ -1,280 +1,384 @@
-// MediaPipe FaceLandmarker landmark indices (468 points)
-// Key landmarks:
-//   Left eye center: 468, Right eye center: 473 (iris, if enabled)
-//   Left eye outer: 33, Right eye outer: 263
-//   Left eye inner: 133, Right eye inner: 362
-//   Nose tip: 1, Nose bottom: 2
-//   Top of head (approx): 10
-//   Mouth corners: 61 (left), 291 (right)
-//   Upper lip center: 13, Lower lip center: 14
-//   Chin: 152
-//   Left cheek: 234, Right cheek: 454
+// Coordinate helpers
+// Landmarks are in [0,1] normalized original-video space.
+// The canvas has the video drawn MIRRORED, so mirrored canvas x = w - landmark.x * w
 
-function lm(landmarks, index, w, h) {
-  const p = landmarks[index]
-  return { x: p.x * w, y: p.y * h }
+function px(landmark, w, h) {
+  return { x: landmark.x * w, y: landmark.y * h }
+}
+
+function lm(landmarks, i, w, h) {
+  return px(landmarks[i], w, h)
+}
+
+// Mirrored x position on canvas for a landmark in original space
+function mx(landmark, w) {
+  return w - landmark.x * w
 }
 
 function dist(a, b) {
   return Math.hypot(b.x - a.x, b.y - a.y)
 }
 
+// Reusable offscreen canvas for pixel snapshots (avoids allocation every frame)
+let _snap = null
+function snapshot(canvas) {
+  if (!_snap || _snap.width !== canvas.width || _snap.height !== canvas.height) {
+    _snap = document.createElement('canvas')
+    _snap.width = canvas.width
+    _snap.height = canvas.height
+  }
+  _snap.getContext('2d').drawImage(canvas, 0, 0)
+  return _snap
+}
+
+// Zoom a circular region of src canvas, draw it enlarged with a soft feathered edge.
+// cx, cy: center on canvas (already in mirrored canvas space)
+// srcR: radius to sample from, dstR: radius to draw at
+function zoomRegion(ctx, src, cx, cy, srcR, dstR) {
+  const tmp = document.createElement('canvas')
+  const d = dstR * 2
+  tmp.width = d
+  tmp.height = d
+  const tCtx = tmp.getContext('2d')
+
+  // Draw zoomed pixels
+  tCtx.drawImage(src, cx - srcR, cy - srcR, srcR * 2, srcR * 2, 0, 0, d, d)
+
+  // Soft circular mask — feathers the edge so it blends into the original face
+  tCtx.globalCompositeOperation = 'destination-in'
+  const grad = tCtx.createRadialGradient(dstR, dstR, dstR * 0.45, dstR, dstR, dstR)
+  grad.addColorStop(0, 'rgba(255,255,255,1)')
+  grad.addColorStop(0.75, 'rgba(255,255,255,0.95)')
+  grad.addColorStop(1, 'rgba(255,255,255,0)')
+  tCtx.fillStyle = grad
+  tCtx.fillRect(0, 0, d, d)
+
+  ctx.drawImage(tmp, cx - dstR, cy - dstR)
+}
+
+// Draw overlay filters in a mirrored context so landmark coords map directly
+// (landmark.x * w in original space → appears at correct mirrored position on canvas)
+function withMirror(ctx, w, fn) {
+  ctx.save()
+  ctx.translate(w, 0)
+  ctx.scale(-1, 1)
+  fn()
+  ctx.restore()
+}
+
+// ─────────────────────────────────────────
 export function drawFilter(ctx, w, h, landmarks, filter) {
   switch (filter) {
-    case 'glasses': drawGlasses(ctx, w, h, landmarks); break
-    case 'bunny':   drawBunnyEars(ctx, w, h, landmarks); break
-    case 'hat':     drawHat(ctx, w, h, landmarks); break
-    case 'big-nose':  drawBigNose(ctx, w, h, landmarks); break
-    case 'big-eyes':  drawBigEyes(ctx, w, h, landmarks); break
-    case 'tiny-mouth': drawTinyMouth(ctx, w, h, landmarks); break
+    case 'glasses':    withMirror(ctx, w, () => drawGlasses(ctx, w, h, landmarks)); break
+    case 'bunny':      withMirror(ctx, w, () => drawBunnyEars(ctx, w, h, landmarks)); break
+    case 'hat':        withMirror(ctx, w, () => drawHat(ctx, w, h, landmarks)); break
+    case 'big-nose':   withMirror(ctx, w, () => drawBigNose(ctx, w, h, landmarks)); break
+    case 'big-eyes':   drawBigEyesWarp(ctx, w, h, landmarks); break
+    case 'big-mouth':  drawBigMouthWarp(ctx, w, h, landmarks); break
+    case 'tiny-mouth': withMirror(ctx, w, () => drawTinyMouth(ctx, w, h, landmarks)); break
     default: break
   }
 }
 
-// ---- GLASSES ----
-function drawGlasses(ctx, w, h, landmarks) {
-  const leftOuter  = lm(landmarks, 33, w, h)
-  const leftInner  = lm(landmarks, 133, w, h)
-  const rightInner = lm(landmarks, 362, w, h)
-  const rightOuter = lm(landmarks, 263, w, h)
-  const noseBridge = lm(landmarks, 6, w, h)
+// ─────────────────────────────────────────
+// BIG EYES — pixel warp: zooms the actual video pixels around each eye
+function drawBigEyesWarp(ctx, w, h, landmarks) {
+  const src = snapshot(ctx.canvas)
 
-  const eyeW = dist(leftOuter, leftInner)
-  const pad = eyeW * 0.3
+  const eyes = [
+    { outer: 33, inner: 133 },  // left eye
+    { outer: 263, inner: 362 }, // right eye
+  ]
+
+  for (const { outer, inner } of eyes) {
+    const o = landmarks[outer]
+    const inn = landmarks[inner]
+    const eyeW = dist({ x: o.x * w, y: o.y * h }, { x: inn.x * w, y: inn.y * h })
+
+    // Center in mirrored canvas space
+    const cx = w - ((o.x + inn.x) / 2) * w
+    const cy = ((o.y + inn.y) / 2) * h
+
+    const srcR = eyeW * 1.1   // sample radius
+    const dstR = eyeW * 2.4   // draw radius — bigger = more bulge
+    zoomRegion(ctx, src, cx, cy, srcR, dstR)
+  }
+}
+
+// BIG MOUTH — pixel warp: zooms the mouth region
+function drawBigMouthWarp(ctx, w, h, landmarks) {
+  const src = snapshot(ctx.canvas)
+
+  const leftCorner  = landmarks[61]
+  const rightCorner = landmarks[291]
+  const upperLip    = landmarks[13]
+  const lowerLip    = landmarks[14]
+
+  const mouthW = dist(
+    { x: leftCorner.x * w, y: leftCorner.y * h },
+    { x: rightCorner.x * w, y: rightCorner.y * h }
+  )
+
+  const cx = w - ((leftCorner.x + rightCorner.x) / 2) * w
+  const cy = ((upperLip.y + lowerLip.y) / 2) * h
+
+  const srcR = mouthW * 0.75
+  const dstR = mouthW * 1.6
+  zoomRegion(ctx, src, cx, cy, srcR, dstR)
+}
+
+// ─────────────────────────────────────────
+// GLASSES — big, bold frames
+function drawGlasses(ctx, w, h, landmarks) {
+  const lo = lm(landmarks, 33, w, h)
+  const li = lm(landmarks, 133, w, h)
+  const ri = lm(landmarks, 362, w, h)
+  const ro = lm(landmarks, 263, w, h)
+
+  const eyeW = dist(lo, li)
+  const lCx = (lo.x + li.x) / 2, lCy = (lo.y + li.y) / 2
+  const rCx = (ri.x + ro.x) / 2, rCy = (ri.y + ro.y) / 2
+
+  const rX = eyeW * 0.72, rY = eyeW * 0.62
+  const frameW = eyeW * 0.12
 
   ctx.save()
+  ctx.lineWidth = frameW
   ctx.strokeStyle = '#1a1a1a'
-  ctx.lineWidth = eyeW * 0.08
 
-  // Left lens
-  const lCx = (leftOuter.x + leftInner.x) / 2
-  const lCy = (leftOuter.y + leftInner.y) / 2
-  ctx.beginPath()
-  ctx.ellipse(lCx, lCy, eyeW / 2 + pad, eyeW * 0.6, 0, 0, Math.PI * 2)
-  ctx.fillStyle = 'rgba(100,180,255,0.2)'
-  ctx.fill()
-  ctx.stroke()
+  // Lens fill (tinted)
+  ctx.fillStyle = 'rgba(80, 200, 255, 0.28)'
+  ctx.beginPath(); ctx.ellipse(lCx, lCy, rX, rY, 0, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.ellipse(rCx, rCy, rX, rY, 0, 0, Math.PI * 2); ctx.fill()
 
-  // Right lens
-  const rCx = (rightOuter.x + rightInner.x) / 2
-  const rCy = (rightOuter.y + rightInner.y) / 2
-  ctx.beginPath()
-  ctx.ellipse(rCx, rCy, eyeW / 2 + pad, eyeW * 0.6, 0, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.stroke()
+  // Frames
+  ctx.beginPath(); ctx.ellipse(lCx, lCy, rX, rY, 0, 0, Math.PI * 2); ctx.stroke()
+  ctx.beginPath(); ctx.ellipse(rCx, rCy, rX, rY, 0, 0, Math.PI * 2); ctx.stroke()
 
   // Bridge
+  ctx.lineWidth = frameW * 0.7
   ctx.beginPath()
-  ctx.moveTo(leftInner.x + pad, lCy)
-  ctx.lineTo(rightInner.x - pad, rCy)
+  ctx.moveTo(li.x + eyeW * 0.28, lCy)
+  ctx.lineTo(ri.x - eyeW * 0.28, rCy)
   ctx.stroke()
 
   // Arms
   ctx.beginPath()
-  ctx.moveTo(leftOuter.x - pad, lCy)
-  ctx.lineTo(leftOuter.x - eyeW, lCy - eyeW * 0.1)
+  ctx.moveTo(lo.x - eyeW * 0.28, lCy)
+  ctx.lineTo(lo.x - eyeW * 1.1, lCy - eyeW * 0.15)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(ro.x + eyeW * 0.28, rCy)
+  ctx.lineTo(ro.x + eyeW * 1.1, rCy - eyeW * 0.15)
   ctx.stroke()
 
+  // Shine on lenses
+  ctx.lineWidth = frameW * 0.3
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'
   ctx.beginPath()
-  ctx.moveTo(rightOuter.x + pad, rCy)
-  ctx.lineTo(rightOuter.x + eyeW, rCy - eyeW * 0.1)
+  ctx.arc(lCx - rX * 0.3, lCy - rY * 0.3, rX * 0.2, 0.2, 1.2)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.arc(rCx - rX * 0.3, rCy - rY * 0.3, rX * 0.2, 0.2, 1.2)
   ctx.stroke()
 
   ctx.restore()
 }
 
-// ---- BUNNY EARS ----
+// ─────────────────────────────────────────
+// BUNNY EARS — tall, fluffy, expressive
 function drawBunnyEars(ctx, w, h, landmarks) {
-  const leftEye  = lm(landmarks, 33, w, h)
-  const rightEye = lm(landmarks, 263, w, h)
-  const top      = lm(landmarks, 10, w, h)
+  const lo = lm(landmarks, 33, w, h)
+  const ro = lm(landmarks, 263, w, h)
+  const top = lm(landmarks, 10, w, h)
 
-  const faceW = dist(leftEye, rightEye)
-  const earH  = faceW * 1.5
-  const earW  = faceW * 0.22
+  const faceW = dist(lo, ro)
+  const midX = (lo.x + ro.x) / 2
+  const earH = faceW * 2.0
+  const earW = faceW * 0.28
 
   ctx.save()
 
-  function drawEar(cx, tiltDir) {
-    const tipX = cx + tiltDir * faceW * 0.12
+  function drawEar(cx, tilt) {
+    const tipX = cx + tilt * faceW * 0.18
     const tipY = top.y - earH
+    const baseY = top.y - faceW * 0.05
+
+    // Outer ear (white/pink gradient)
     ctx.beginPath()
-    ctx.moveTo(cx - earW / 2, top.y - faceW * 0.1)
-    ctx.quadraticCurveTo(cx - earW * 0.8 + tiltDir * 5, tipY + earH * 0.3, tipX - earW * 0.3, tipY)
-    ctx.quadraticCurveTo(tipX, tipY - earH * 0.05, tipX + earW * 0.3, tipY)
-    ctx.quadraticCurveTo(cx + earW * 0.8 + tiltDir * 5, tipY + earH * 0.3, cx + earW / 2, top.y - faceW * 0.1)
+    ctx.moveTo(cx - earW / 2, baseY)
+    ctx.bezierCurveTo(
+      cx - earW * 1.1 + tilt * 10, baseY - earH * 0.4,
+      tipX - earW * 0.5, tipY + earH * 0.15,
+      tipX, tipY
+    )
+    ctx.bezierCurveTo(
+      tipX + earW * 0.5, tipY + earH * 0.15,
+      cx + earW * 1.1 + tilt * 10, baseY - earH * 0.4,
+      cx + earW / 2, baseY
+    )
     ctx.closePath()
     ctx.fillStyle = '#f9c9d4'
     ctx.fill()
-    ctx.strokeStyle = '#e8a0b0'
-    ctx.lineWidth = 2
+    ctx.strokeStyle = '#d4a0b0'
+    ctx.lineWidth = 3
     ctx.stroke()
 
     // Inner pink
     ctx.beginPath()
-    ctx.moveTo(cx - earW * 0.2, top.y - faceW * 0.15)
-    ctx.quadraticCurveTo(cx - earW * 0.3 + tiltDir * 3, tipY + earH * 0.4, tipX, tipY + earH * 0.1)
-    ctx.quadraticCurveTo(cx + earW * 0.3 + tiltDir * 3, tipY + earH * 0.4, cx + earW * 0.2, top.y - faceW * 0.15)
+    ctx.moveTo(cx - earW * 0.22, baseY - earH * 0.08)
+    ctx.bezierCurveTo(
+      cx - earW * 0.45 + tilt * 6, baseY - earH * 0.45,
+      tipX - earW * 0.2, tipY + earH * 0.18,
+      tipX, tipY + earH * 0.08
+    )
+    ctx.bezierCurveTo(
+      tipX + earW * 0.2, tipY + earH * 0.18,
+      cx + earW * 0.45 + tilt * 6, baseY - earH * 0.45,
+      cx + earW * 0.22, baseY - earH * 0.08
+    )
     ctx.fillStyle = '#f472b6'
     ctx.fill()
   }
 
-  const midX = (leftEye.x + rightEye.x) / 2
-  drawEar(midX - faceW * 0.28, -1)
-  drawEar(midX + faceW * 0.28,  1)
-
+  drawEar(midX - faceW * 0.3, -1)
+  drawEar(midX + faceW * 0.3, 1)
   ctx.restore()
 }
 
-// ---- HAT ----
+// ─────────────────────────────────────────
+// HAT — tall top hat
 function drawHat(ctx, w, h, landmarks) {
-  const leftEye  = lm(landmarks, 33, w, h)
-  const rightEye = lm(landmarks, 263, w, h)
-  const top      = lm(landmarks, 10, w, h)
+  const lo = lm(landmarks, 33, w, h)
+  const ro = lm(landmarks, 263, w, h)
+  const top = lm(landmarks, 10, w, h)
 
-  const faceW = dist(leftEye, rightEye)
-  const cx = (leftEye.x + rightEye.x) / 2
-  const brimW = faceW * 1.8
-  const brimH = faceW * 0.12
-  const crownW = faceW * 1.0
-  const crownH = faceW * 1.1
-  const baseY = top.y - faceW * 0.05
+  const faceW = dist(lo, ro)
+  const cx = (lo.x + ro.x) / 2
+  const baseY = top.y - faceW * 0.04
+
+  const crownW = faceW * 1.05
+  const crownH = faceW * 1.4
+  const brimW  = faceW * 2.0
+  const brimH  = faceW * 0.16
 
   ctx.save()
-  ctx.fillStyle = '#1a1a1a'
+
+  // Crown shadow
+  ctx.fillStyle = '#111'
+  ctx.fillRect(cx - crownW / 2 + 6, baseY - crownH + 6, crownW, crownH)
 
   // Crown
+  ctx.fillStyle = '#1a1a1a'
   ctx.fillRect(cx - crownW / 2, baseY - crownH, crownW, crownH)
 
-  // Band
+  // Red band
   ctx.fillStyle = '#c0392b'
-  ctx.fillRect(cx - crownW / 2, baseY - brimH * 1.5, crownW, brimH * 0.7)
+  ctx.fillRect(cx - crownW / 2, baseY - brimH * 2, crownW, brimH * 0.9)
+
+  // Gold buckle on band
+  const buckleW = faceW * 0.18, buckleH = brimH * 0.8
+  ctx.strokeStyle = '#f59e0b'
+  ctx.lineWidth = 3
+  ctx.strokeRect(cx - buckleW / 2, baseY - brimH * 1.95, buckleW, buckleH * 0.9)
+  ctx.strokeRect(cx - buckleW * 0.3, baseY - brimH * 1.88, buckleW * 0.6, buckleH * 0.55)
 
   // Brim
   ctx.fillStyle = '#1a1a1a'
   ctx.beginPath()
-  ctx.ellipse(cx, baseY, brimW / 2, brimH, 0, 0, Math.PI * 2)
+  ctx.ellipse(cx, baseY, brimW / 2, brimH / 2, 0, 0, Math.PI * 2)
   ctx.fill()
+
+  // Brim highlight
+  ctx.strokeStyle = '#333'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.ellipse(cx, baseY - brimH * 0.1, brimW / 2 - 4, brimH * 0.3, 0, 0, Math.PI)
+  ctx.stroke()
 
   ctx.restore()
 }
 
-// ---- BIG NOSE ----
+// ─────────────────────────────────────────
+// BIG NOSE — chunky cartoon nose
 function drawBigNose(ctx, w, h, landmarks) {
-  const noseTip    = lm(landmarks, 1, w, h)
-  const noseBottom = lm(landmarks, 2, w, h)
-  const leftNose   = lm(landmarks, 129, w, h)
-  const rightNose  = lm(landmarks, 358, w, h)
+  const tip   = lm(landmarks, 1, w, h)
+  const lNose = lm(landmarks, 129, w, h)
+  const rNose = lm(landmarks, 358, w, h)
 
-  const noseW = dist(leftNose, rightNose)
-  const scale = 2.2
+  const noseW = dist(lNose, rNose)
+  const scale = 3.0
   const sw = noseW * scale
-  const sh = noseW * scale * 1.1
+  const sh = noseW * scale * 0.9
 
   ctx.save()
+
+  // Shadow
   ctx.beginPath()
-  ctx.ellipse(noseTip.x, noseTip.y + sh * 0.1, sw / 2, sh / 2, 0, 0, Math.PI * 2)
-  ctx.fillStyle = '#e8956d'
+  ctx.ellipse(tip.x + 4, tip.y + sh * 0.15 + 4, sw / 2, sh / 2, 0, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(0,0,0,0.2)'
   ctx.fill()
-  ctx.strokeStyle = '#c0724a'
-  ctx.lineWidth = 2
+
+  // Main nose
+  ctx.beginPath()
+  ctx.ellipse(tip.x, tip.y + sh * 0.1, sw / 2, sh / 2, 0, 0, Math.PI * 2)
+  const noseGrad = ctx.createRadialGradient(tip.x - sw * 0.15, tip.y - sh * 0.1, sw * 0.05, tip.x, tip.y, sw * 0.6)
+  noseGrad.addColorStop(0, '#f4a57c')
+  noseGrad.addColorStop(1, '#c06035')
+  ctx.fillStyle = noseGrad
+  ctx.fill()
+  ctx.strokeStyle = '#9a4020'
+  ctx.lineWidth = 3
   ctx.stroke()
 
   // Nostrils
-  const nostrilR = sw * 0.13
-  ctx.fillStyle = '#7a3b1e'
+  const nr = sw * 0.14
+  ctx.fillStyle = '#5c2010'
   ctx.beginPath()
-  ctx.ellipse(noseTip.x - sw * 0.22, noseTip.y + sh * 0.22, nostrilR, nostrilR * 0.7, -0.3, 0, Math.PI * 2)
+  ctx.ellipse(tip.x - sw * 0.24, tip.y + sh * 0.2, nr, nr * 0.72, -0.4, 0, Math.PI * 2)
   ctx.fill()
   ctx.beginPath()
-  ctx.ellipse(noseTip.x + sw * 0.22, noseTip.y + sh * 0.22, nostrilR, nostrilR * 0.7, 0.3, 0, Math.PI * 2)
+  ctx.ellipse(tip.x + sw * 0.24, tip.y + sh * 0.2, nr, nr * 0.72, 0.4, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Highlight
+  ctx.beginPath()
+  ctx.ellipse(tip.x - sw * 0.18, tip.y - sh * 0.1, sw * 0.09, sw * 0.07, -0.5, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(255,255,255,0.45)'
   ctx.fill()
 
   ctx.restore()
 }
 
-// ---- BIG EYES ----
-function drawBigEyes(ctx, w, h, landmarks) {
-  const leftOuter  = lm(landmarks, 33, w, h)
-  const leftInner  = lm(landmarks, 133, w, h)
-  const rightInner = lm(landmarks, 362, w, h)
-  const rightOuter = lm(landmarks, 263, w, h)
-
-  const eyeW = dist(leftOuter, leftInner)
-  const scale = 1.8
-  const r = (eyeW / 2) * scale
-
-  function drawEye(cx, cy) {
-    // White
-    ctx.beginPath()
-    ctx.ellipse(cx, cy, r, r * 0.85, 0, 0, Math.PI * 2)
-    ctx.fillStyle = 'white'
-    ctx.fill()
-    ctx.strokeStyle = '#333'
-    ctx.lineWidth = 2
-    ctx.stroke()
-
-    // Iris
-    ctx.beginPath()
-    ctx.ellipse(cx, cy, r * 0.55, r * 0.55, 0, 0, Math.PI * 2)
-    ctx.fillStyle = '#3b82f6'
-    ctx.fill()
-
-    // Pupil
-    ctx.beginPath()
-    ctx.ellipse(cx, cy, r * 0.28, r * 0.28, 0, 0, Math.PI * 2)
-    ctx.fillStyle = '#000'
-    ctx.fill()
-
-    // Shine
-    ctx.beginPath()
-    ctx.ellipse(cx - r * 0.15, cy - r * 0.18, r * 0.1, r * 0.1, 0, 0, Math.PI * 2)
-    ctx.fillStyle = 'rgba(255,255,255,0.8)'
-    ctx.fill()
-  }
-
-  const lCx = (leftOuter.x + leftInner.x) / 2
-  const lCy = (leftOuter.y + leftInner.y) / 2
-  const rCx = (rightOuter.x + rightInner.x) / 2
-  const rCy = (rightOuter.y + rightInner.y) / 2
-
-  ctx.save()
-  drawEye(lCx, lCy)
-  drawEye(rCx, rCy)
-  ctx.restore()
-}
-
-// ---- TINY MOUTH ----
+// ─────────────────────────────────────────
+// TINY MOUTH
 function drawTinyMouth(ctx, w, h, landmarks) {
-  const leftCorner  = lm(landmarks, 61, w, h)
-  const rightCorner = lm(landmarks, 291, w, h)
-  const upperLip    = lm(landmarks, 13, w, h)
-  const lowerLip    = lm(landmarks, 14, w, h)
+  const lc = lm(landmarks, 61, w, h)
+  const rc = lm(landmarks, 291, w, h)
+  const ul = lm(landmarks, 13, w, h)
+  const ll = lm(landmarks, 14, w, h)
 
-  const mouthW = dist(leftCorner, rightCorner)
-  const mouthH = dist(upperLip, lowerLip)
-  const cx = (leftCorner.x + rightCorner.x) / 2
-  const cy = (upperLip.y + lowerLip.y) / 2
-
-  const scale = 0.35
-  const tinyW = mouthW * scale
-  const tinyH = Math.max(mouthH * scale, 4)
+  const mouthW = dist(lc, rc)
+  const mouthH = dist(ul, ll)
+  const cx = (lc.x + rc.x) / 2
+  const cy = (ul.y + ll.y) / 2
 
   ctx.save()
 
   // Cover original mouth with skin tone
   ctx.beginPath()
-  ctx.ellipse(cx, cy, mouthW * 0.6, mouthH * 0.8 + 4, 0, 0, Math.PI * 2)
-  ctx.fillStyle = '#e8b89a'
+  ctx.ellipse(cx, cy, mouthW * 0.65, mouthH + 8, 0, 0, Math.PI * 2)
+  ctx.fillStyle = '#dea882'
   ctx.fill()
 
-  // Draw tiny mouth
+  // Tiny mouth
+  const tW = mouthW * 0.28, tH = Math.max(mouthH * 0.3, 5)
   ctx.beginPath()
-  ctx.ellipse(cx, cy, tinyW, tinyH, 0, 0, Math.PI * 2)
-  ctx.fillStyle = '#8b3a3a'
+  ctx.ellipse(cx, cy, tW, tH, 0, 0, Math.PI * 2)
+  ctx.fillStyle = '#7a2828'
   ctx.fill()
-  ctx.strokeStyle = '#5c2020'
-  ctx.lineWidth = 1
+  ctx.strokeStyle = '#4a1010'
+  ctx.lineWidth = 1.5
   ctx.stroke()
 
   ctx.restore()

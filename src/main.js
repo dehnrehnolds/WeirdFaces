@@ -9,9 +9,11 @@ const filterBtns = document.querySelectorAll('.filter-btn')
 
 let activeFilter = 'none'
 let detector = null
-let animFrame = null
 
-// --- Filter selection ---
+// Hide the raw video — we draw it ourselves onto canvas so warp filters can manipulate pixels
+video.style.visibility = 'hidden'
+canvas.style.transform = 'none'
+
 filterBtns.forEach(btn => {
   btn.addEventListener('click', () => {
     filterBtns.forEach(b => b.classList.remove('active'))
@@ -20,7 +22,6 @@ filterBtns.forEach(btn => {
   })
 })
 
-// --- Camera setup ---
 async function startCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -28,17 +29,17 @@ async function startCamera() {
   })
   video.srcObject = stream
   await new Promise(resolve => video.addEventListener('loadedmetadata', resolve, { once: true }))
+  // Set canvas size once — resizing clears canvas and resets context state
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
   video.play()
 }
 
-// --- MediaPipe FaceMesh setup ---
 async function loadDetector() {
   const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm')
-
   const filesetResolver = await vision.FilesetResolver.forVisionTasks(
     'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
   )
-
   detector = await vision.FaceLandmarker.createFromOptions(filesetResolver, {
     baseOptions: {
       modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
@@ -49,39 +50,31 @@ async function loadDetector() {
   })
 }
 
-// --- Render loop ---
 function renderLoop() {
   const ctx = canvas.getContext('2d')
-  canvas.width = video.videoWidth
-  canvas.height = video.videoHeight
+  const w = canvas.width
+  const h = canvas.height
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  // Draw the mirrored video frame — this is our base for every filter
+  ctx.save()
+  ctx.translate(w, 0)
+  ctx.scale(-1, 1)
+  ctx.drawImage(video, 0, 0, w, h)
+  ctx.restore()
 
   if (detector && video.readyState >= 2) {
     const results = detector.detectForVideo(video, performance.now())
     if (results.faceLandmarks?.length > 0) {
-      drawFilter(ctx, canvas.width, canvas.height, results.faceLandmarks[0], activeFilter)
+      drawFilter(ctx, w, h, results.faceLandmarks[0], activeFilter)
     }
   }
 
-  animFrame = requestAnimationFrame(renderLoop)
+  requestAnimationFrame(renderLoop)
 }
 
-// --- Snap ---
+// Snap saves exactly what's on canvas (already has mirrored video + filter baked in)
 snapBtn.addEventListener('click', () => {
-  const snap = document.createElement('canvas')
-  snap.width = canvas.width
-  snap.height = canvas.height
-  const ctx = snap.getContext('2d')
-  // Flip to match the mirrored display
-  ctx.translate(snap.width, 0)
-  ctx.scale(-1, 1)
-  ctx.drawImage(video, 0, 0)
-  ctx.scale(-1, 1)
-  ctx.translate(-snap.width, 0)
-  ctx.drawImage(canvas, 0, 0)
-
-  snap.toBlob(blob => {
+  canvas.toBlob(blob => {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -91,7 +84,6 @@ snapBtn.addEventListener('click', () => {
   }, 'image/png')
 })
 
-// --- Init ---
 ;(async () => {
   try {
     await Promise.all([startCamera(), loadDetector()])
