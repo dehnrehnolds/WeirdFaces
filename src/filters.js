@@ -168,11 +168,13 @@ function hairCanvas(w, h) {
 }
 
 // ── HAIR COLOR ────────────────────────────────────────────────────────────────
-// Paints the hair region (above forehead arc, minus face oval) with chosen HSL
-// color using the 'color' blend mode — changes hue/sat while preserving luminosity.
+// Hair region = head-sized ellipse  MINUS  face oval.
+// The ellipse is bounded to the head so no background is colored.
 function drawHairColor(ctx, w, h, landmarks, hslColor) {
   const { h: hue, s, l } = hslColor
   const colorStr = `hsl(${Math.round(hue)},${Math.round(s * 100)}%,${Math.round(l * 100)}%)`
+
+  const { cx: faceCx, cy: faceCy, r: faceR } = getFaceCenter(landmarks, w, h)
 
   const tmp  = hairCanvas(w, h)
   const tCtx = tmp.getContext('2d')
@@ -181,20 +183,17 @@ function drawHairColor(ctx, w, h, landmarks, hslColor) {
   const mirX = idx => w - landmarks[idx].x * w
   const mirY = idx => landmarks[idx].y * h
 
-  // Single beginPath with two sub-paths; evenodd makes the face oval a hole.
+  // Outer sub-path: ellipse that approximates the full head including hair.
+  // Shifted up from the face center because hair sits above the face.
+  const headCx = faceCx
+  const headCy = faceCy - faceR * 0.28   // shift up: hair is above face center
+  const headRx = faceR * 1.12            // slightly wider than face for side hair
+  const headRy = faceR * 1.52            // taller to cover hair above head
+
   tCtx.beginPath()
+  tCtx.ellipse(headCx, headCy, headRx, headRy, 0, 0, Math.PI * 2)
 
-  // Outer sub-path: rectangle from top of frame down to the forehead arc.
-  // FOREHEAD_ARC in mirrored canvas space runs right→left (234=right, 454=left).
-  // We traverse it reversed (454→234 = left→right) so the winding is correct.
-  tCtx.moveTo(w, 0)                                          // top-right
-  tCtx.lineTo(0, 0)                                          // top-left
-  tCtx.lineTo(0, mirY(FOREHEAD_ARC[FOREHEAD_ARC.length - 1])) // left edge to 454 level
-  ;[...FOREHEAD_ARC].reverse().forEach(idx => tCtx.lineTo(mirX(idx), mirY(idx)))
-  tCtx.lineTo(w, mirY(FOREHEAD_ARC[0]))                      // right edge at 234 level
-  tCtx.closePath()                                           // back to top-right
-
-  // Inner sub-path: face oval (punched out by evenodd)
+  // Inner sub-path: face oval punched out with evenodd so face skin stays uncolored
   FACE_OVAL.forEach((idx, i) => {
     i === 0 ? tCtx.moveTo(mirX(idx), mirY(idx)) : tCtx.lineTo(mirX(idx), mirY(idx))
   })
@@ -203,11 +202,14 @@ function drawHairColor(ctx, w, h, landmarks, hslColor) {
   tCtx.fillStyle = colorStr
   tCtx.fill('evenodd')
 
-  // Composite onto main canvas — blur softens the hairline edge
+  // Composite onto main canvas.
+  // 'color' blend mode: applies hue+saturation while keeping pixel luminosity,
+  // so dark hair stays dark-tinted and light hair stays light-tinted.
+  // blur() feathers the ellipse edge into the hairline naturally.
   ctx.save()
-  ctx.filter = 'blur(5px)'
+  ctx.filter = 'blur(8px)'
   ctx.globalCompositeOperation = 'color'
-  ctx.globalAlpha = 0.82
+  ctx.globalAlpha = 0.85
   ctx.drawImage(tmp, 0, 0)
   ctx.filter = 'none'
   ctx.globalAlpha = 1
