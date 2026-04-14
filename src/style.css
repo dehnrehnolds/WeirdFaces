@@ -117,8 +117,44 @@ header h1 {
   color: #fff;
 }
 
+/* ── Face-swap error banner ───────────────────────────────────────────────── */
+#face-swap-error {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 20px;
+  background: rgba(220, 38, 38, 0.88);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 20;
+  animation: slideUp 0.2s ease;
+}
+
+#face-swap-error.hidden {
+  display: none;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ── Bottom bar: snap + gallery ───────────────────────────────────────────── */
+#bottom-bar {
+  display: flex;
+  gap: 0;
+}
+
 #snap-btn {
-  width: 100%;
+  flex: 1;
   padding: 14px;
   background: #a855f7;
   color: #fff;
@@ -132,4 +168,245 @@ header h1 {
 
 #snap-btn:active {
   background: #7e22ce;
+}
+
+#gallery-btn {
+  padding: 14px 20px;
+  background: #1f1f2e;
+  color: #a855f7;
+  font-size: 1rem;
+  font-weight: bold;
+  border: none;
+  border-left: 1px solid #333;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+#gallery-btn:active {
+  background: #2d2d44;
+}
+
+/* ── Gallery panel (slides up from bottom) ───────────────────────────────── */
+#gallery-panel {
+  position: fixed;
+  inset: 0;
+  background: #111;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#gallery-panel.open {
+  transform: translateY(0);
+}
+
+#gallery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+}
+
+#gallery-header h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+#gallery-close {
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+#gallery-grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 2px;
+  align-content: start;
+}
+
+.gallery-item {
+  aspect-ratio: 1;
+  overflow: hidden;
+  cursor: pointer;
+  background: #222;
+}
+
+.gallery-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: opacity 0.15s;
+}
+
+.gallery-item:active img {
+  opacity: 0.7;
+}
+
+#gallery-empty {
+  flex: 1;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: #555;
+  font-size: 0.95rem;
+  text-align: center;
+  padding: 40px;
+}
+
+/* ── Lightbox ─────────────────────────────────────────────────────────────── */
+#lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.95);
+  z-index: 200;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+#lightbox.open {
+  display: flex;
+}
+
+#lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255,255,255,0.12);
+  border: none;
+  color: #fff;
+  font-size: 1.1rem;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#lightbox-img {
+  max-width: 100%;
+  max-height: 75dvh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+#lightbox-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+#lightbox-actions button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 24px;
+  border: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+#lightbox-actions button:active {
+  opacity: 0.7;
+}
+
+#lightbox-share {
+  background: #a855f7;
+  color: #fff;
+}
+
+#lightbox-delete {
+  background: #3a1a1a;
+  color: #f87171;
+}
+
+/* ── Hair color picker ───────────────────────────────────────────────────── */
+#hair-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #1a1a1a;
+  border-top: 1px solid #333;
+}
+
+#hair-picker.hidden {
+  display: none;
+}
+
+#hair-picker-main {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+#color-wheel {
+  border-radius: 50%;
+  cursor: crosshair;
+  touch-action: none;
+  flex-shrink: 0;
+}
+
+#hair-picker-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+#hair-color-preview {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid #555;
+  background: hsl(30, 65%, 30%);
+  flex-shrink: 0;
+}
+
+#brightness-strip {
+  border-radius: 6px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.hair-swatches {
+  display: flex;
+  gap: 8px;
+}
+
+.hair-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid #444;
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 0.15s, transform 0.1s;
+  touch-action: manipulation;
+}
+
+.hair-swatch:hover,
+.hair-swatch:active {
+  border-color: #fff;
+  transform: scale(1.2);
 }

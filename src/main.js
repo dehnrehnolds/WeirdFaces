@@ -1,14 +1,32 @@
 import './style.css'
-import { drawFilter } from './filters.js'
+import { drawFilter, drawFaceSwap } from './filters.js'
+import { setupColorPicker } from './colorPicker.js'
+import { saveSnap } from './db.js'
+import { refreshGallery } from './gallery.js'
 
-const video = document.getElementById('video')
-const canvas = document.getElementById('canvas')
-const loading = document.getElementById('loading')
-const snapBtn = document.getElementById('snap-btn')
-const filterBtns = document.querySelectorAll('.filter-btn')
+const video          = document.getElementById('video')
+const canvas         = document.getElementById('canvas')
+const loading        = document.getElementById('loading')
+const snapBtn        = document.getElementById('snap-btn')
+const filterBtns     = document.querySelectorAll('.filter-btn')
+const faceSwapError  = document.getElementById('face-swap-error')
+const faceSwapErrMsg = document.getElementById('face-swap-error-msg')
 
 let activeFilter = 'none'
-let detector = null
+let hairColor    = { h: 30, s: 0.65, l: 0.30 }
+let detector     = null
+
+const colorPicker = setupColorPicker(color => { hairColor = color })
+
+// Show / hide the face-swap error banner (pass null to hide)
+function setFaceSwapError(msg) {
+  if (msg) {
+    faceSwapErrMsg.textContent = msg
+    faceSwapError.classList.remove('hidden')
+  } else {
+    faceSwapError.classList.add('hidden')
+  }
+}
 
 // Hide the raw video — we draw it ourselves onto canvas so warp filters can manipulate pixels
 video.style.visibility = 'hidden'
@@ -19,6 +37,8 @@ filterBtns.forEach(btn => {
     filterBtns.forEach(b => b.classList.remove('active'))
     btn.classList.add('active')
     activeFilter = btn.dataset.filter
+    if (activeFilter === 'hair-color') colorPicker.show()
+    else colorPicker.hide()
   })
 })
 
@@ -63,24 +83,38 @@ function renderLoop() {
   ctx.restore()
 
   if (detector && video.readyState >= 2) {
-    const results = detector.detectForVideo(video, performance.now())
-    for (const face of (results.faceLandmarks ?? [])) {
-      drawFilter(ctx, w, h, face, activeFilter)
+    const results  = detector.detectForVideo(video, performance.now())
+    const allFaces = results.faceLandmarks ?? []
+
+    if (activeFilter === 'face-swap') {
+      if (allFaces.length >= 2) {
+        setFaceSwapError(null)
+        drawFaceSwap(ctx, w, h, allFaces)
+      } else {
+        const msg = allFaces.length === 0
+          ? '👀 No faces detected — point the camera at two people'
+          : '🫂 Need 2 faces in frame to swap'
+        setFaceSwapError(msg)
+      }
+    } else {
+      setFaceSwapError(null)
+      for (const face of allFaces) {
+        drawFilter(ctx, w, h, face, activeFilter, { hairColor })
+      }
     }
   }
 
   requestAnimationFrame(renderLoop)
 }
 
-// Snap saves exactly what's on canvas (already has mirrored video + filter baked in)
+// Snap saves to IndexedDB and refreshes the gallery
 snapBtn.addEventListener('click', () => {
-  canvas.toBlob(blob => {
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'weirdface.png'
-    a.click()
-    URL.revokeObjectURL(url)
+  canvas.toBlob(async blob => {
+    await saveSnap(blob)
+    refreshGallery()
+    // Brief visual flash to confirm the snap
+    snapBtn.textContent = '✅ Saved!'
+    setTimeout(() => { snapBtn.textContent = '📸 Snap' }, 1000)
   }, 'image/png')
 })
 

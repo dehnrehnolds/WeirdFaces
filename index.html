@@ -35,10 +35,64 @@
         <button class="filter-btn" data-filter="big-head">Big Head</button>
         <button class="filter-btn" data-filter="balloon-head">Balloon Head</button>
         <button class="filter-btn" data-filter="beard">Beard</button>
+        <button class="filter-btn" data-filter="face-swap">🔄 Face Swap</button>
+        <button class="filter-btn" data-filter="hair-color">💇 Hair Color</button>
       </div>
 
-      <button id="snap-btn">📸 Snap</button>
+      <!-- ── Hair color picker (shown only when Hair Color filter is active) ── -->
+      <div id="hair-picker" class="hidden">
+        <div id="hair-picker-main">
+          <canvas id="color-wheel" width="150" height="150"></canvas>
+          <div id="hair-picker-right">
+            <div id="hair-color-preview"></div>
+            <canvas id="brightness-strip" width="32" height="120"></canvas>
+          </div>
+        </div>
+        <div class="hair-swatches">
+          <button class="hair-swatch" title="Black"></button>
+          <button class="hair-swatch" title="Dark Brown"></button>
+          <button class="hair-swatch" title="Brown"></button>
+          <button class="hair-swatch" title="Blonde"></button>
+          <button class="hair-swatch" title="Red"></button>
+          <button class="hair-swatch" title="Pink"></button>
+          <button class="hair-swatch" title="Blue"></button>
+          <button class="hair-swatch" title="Purple"></button>
+        </div>
+      </div>
+
+      <div id="face-swap-error" class="hidden">
+        <span id="face-swap-error-msg"></span>
+      </div>
+
+      <div id="bottom-bar">
+        <button id="snap-btn">📸 Snap</button>
+        <button id="gallery-btn">🖼️ Gallery</button>
+      </div>
     </div>
+
+    <!-- ── Gallery panel ───────────────────────────────────────────── -->
+    <div id="gallery-panel">
+      <div id="gallery-header">
+        <h2>Saved Faces</h2>
+        <button id="gallery-close">✕</button>
+      </div>
+      <div id="gallery-grid"></div>
+      <div id="gallery-empty">
+        <p>No snaps yet — hit 📸 to save one!</p>
+      </div>
+    </div>
+
+    <!-- ── Lightbox ────────────────────────────────────────────────── -->
+    <div id="lightbox">
+      <button id="lightbox-close">✕</button>
+      <img id="lightbox-img" src="" alt="Snapped face" />
+      <div id="lightbox-actions">
+        <button id="lightbox-share">⬆️ Share</button>
+        <button id="lightbox-delete">🗑️ Delete</button>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.js"></script>
+    <script type="module" src="/src/gallery.js"></script>
   </body>
 </html>

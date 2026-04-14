@@ -9,6 +9,10 @@ const FACE_OVAL         = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361,
 const LEFT_JAW  = [234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152]
 const RIGHT_JAW = [152, 377, 400, 378, 379, 365, 397, 288, 361, 323, 454]
 
+// Forehead arc from left temple (234) across top of head to right temple (454).
+// In the original video these go left→right; in the mirrored canvas they go right→left.
+const FOREHEAD_ARC = [234, 127, 162, 21, 54, 103, 67, 109, 10, 338, 297, 332, 284, 251, 389, 356, 454]
+
 // ── Coordinate helpers ────────────────────────────────────────────────────────
 function lm(landmarks, i, w, h) {
   return { x: landmarks[i].x * w, y: landmarks[i].y * h }
@@ -96,7 +100,123 @@ function withMirror(ctx, w, fn) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-export function drawFilter(ctx, w, h, landmarks, filter) {
+// ── FACE SWAP ─────────────────────────────────────────────────────────────────
+// Operates on all detected faces at once — call separately, not inside the
+// per-face loop. allFaces must have length >= 2.
+export function drawFaceSwap(ctx, w, h, allFaces) {
+  if (allFaces.length < 2) return
+
+  const src = snapshot(ctx.canvas)
+
+  // Extract face from src, masked to its oval, draw it at the other face's position
+  function swapFaceOnto(srcLandmarks, srcC, dstC) {
+    const pad  = 1.3                          // padding ratio around face radius
+    const srcD = Math.round(srcC.r * 2 * pad)
+    const dstD = Math.round(dstC.r * 2 * pad)
+
+    const tmp  = document.createElement('canvas')
+    tmp.width  = tmp.height = srcD
+    const tCtx = tmp.getContext('2d')
+
+    // Copy the source face region from the snapshot
+    tCtx.drawImage(
+      src,
+      srcC.cx - srcC.r * pad, srcC.cy - srcC.r * pad, srcD, srcD,
+      0, 0, srcD, srcD
+    )
+
+    // Feathered oval mask — convert landmarks to temp-canvas space then expand slightly
+    tCtx.globalCompositeOperation = 'destination-in'
+    tCtx.filter = `blur(${Math.round(srcC.r * 0.06)}px)`
+    tCtx.beginPath()
+    FACE_OVAL.forEach((idx, i) => {
+      const px = (w - srcLandmarks[idx].x * w) - srcC.cx + srcC.r * pad
+      const py = srcLandmarks[idx].y * h      - srcC.cy + srcC.r * pad
+      // Expand 8 % outward from centre for better hairline coverage
+      const ex = srcD / 2 + (px - srcD / 2) * 1.08
+      const ey = srcD / 2 + (py - srcD / 2) * 1.08
+      i === 0 ? tCtx.moveTo(ex, ey) : tCtx.lineTo(ex, ey)
+    })
+    tCtx.closePath()
+    tCtx.fillStyle = 'white'
+    tCtx.fill()
+
+    // Composite onto destination position, scaled to match destination face size
+    ctx.drawImage(
+      tmp,
+      0, 0, srcD, srcD,
+      dstC.cx - dstC.r * pad, dstC.cy - dstC.r * pad, dstD, dstD
+    )
+  }
+
+  const c1 = getFaceCenter(allFaces[0], w, h)
+  const c2 = getFaceCenter(allFaces[1], w, h)
+
+  swapFaceOnto(allFaces[0], c1, c2)
+  swapFaceOnto(allFaces[1], c2, c1)
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ── Reusable offscreen canvas for hair color (avoid allocation every frame) ───
+let _hair = null
+function hairCanvas(w, h) {
+  if (!_hair || _hair.width !== w || _hair.height !== h) {
+    _hair = document.createElement('canvas')
+    _hair.width = w; _hair.height = h
+  }
+  return _hair
+}
+
+// ── HAIR COLOR ────────────────────────────────────────────────────────────────
+// Paints the hair region (above forehead arc, minus face oval) with chosen HSL
+// color using the 'color' blend mode — changes hue/sat while preserving luminosity.
+function drawHairColor(ctx, w, h, landmarks, hslColor) {
+  const { h: hue, s, l } = hslColor
+  const colorStr = `hsl(${Math.round(hue)},${Math.round(s * 100)}%,${Math.round(l * 100)}%)`
+
+  const tmp  = hairCanvas(w, h)
+  const tCtx = tmp.getContext('2d')
+  tCtx.clearRect(0, 0, w, h)
+
+  const mirX = idx => w - landmarks[idx].x * w
+  const mirY = idx => landmarks[idx].y * h
+
+  // Single beginPath with two sub-paths; evenodd makes the face oval a hole.
+  tCtx.beginPath()
+
+  // Outer sub-path: rectangle from top of frame down to the forehead arc.
+  // FOREHEAD_ARC in mirrored canvas space runs right→left (234=right, 454=left).
+  // We traverse it reversed (454→234 = left→right) so the winding is correct.
+  tCtx.moveTo(w, 0)                                          // top-right
+  tCtx.lineTo(0, 0)                                          // top-left
+  tCtx.lineTo(0, mirY(FOREHEAD_ARC[FOREHEAD_ARC.length - 1])) // left edge to 454 level
+  ;[...FOREHEAD_ARC].reverse().forEach(idx => tCtx.lineTo(mirX(idx), mirY(idx)))
+  tCtx.lineTo(w, mirY(FOREHEAD_ARC[0]))                      // right edge at 234 level
+  tCtx.closePath()                                           // back to top-right
+
+  // Inner sub-path: face oval (punched out by evenodd)
+  FACE_OVAL.forEach((idx, i) => {
+    i === 0 ? tCtx.moveTo(mirX(idx), mirY(idx)) : tCtx.lineTo(mirX(idx), mirY(idx))
+  })
+  tCtx.closePath()
+
+  tCtx.fillStyle = colorStr
+  tCtx.fill('evenodd')
+
+  // Composite onto main canvas — blur softens the hairline edge
+  ctx.save()
+  ctx.filter = 'blur(5px)'
+  ctx.globalCompositeOperation = 'color'
+  ctx.globalAlpha = 0.82
+  ctx.drawImage(tmp, 0, 0)
+  ctx.filter = 'none'
+  ctx.globalAlpha = 1
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.restore()
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+export function drawFilter(ctx, w, h, landmarks, filter, opts = {}) {
   switch (filter) {
     case 'glasses':      withMirror(ctx, w, () => drawGlasses(ctx, w, h, landmarks));   break
     case 'bunny':        withMirror(ctx, w, () => drawBunnyEars(ctx, w, h, landmarks)); break
@@ -104,6 +224,7 @@ export function drawFilter(ctx, w, h, landmarks, filter) {
     case 'big-nose':     withMirror(ctx, w, () => drawBigNose(ctx, w, h, landmarks));   break
     case 'tiny-mouth':   withMirror(ctx, w, () => drawTinyMouth(ctx, w, h, landmarks)); break
     case 'beard':        withMirror(ctx, w, () => drawBeard(ctx, w, h, landmarks));     break
+    case 'hair-color':   drawHairColor(ctx, w, h, landmarks, opts.hairColor ?? { h: 30, s: 0.65, l: 0.30 }); break
     case 'big-eyes':     drawBigEyesWarp(ctx, w, h, landmarks);    break
     case 'big-mouth':    drawBigMouthWarp(ctx, w, h, landmarks);   break
     case 'big-head':     drawBigHeadWarp(ctx, w, h, landmarks);    break
