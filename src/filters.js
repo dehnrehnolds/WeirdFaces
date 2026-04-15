@@ -251,14 +251,29 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
   tCtx.drawImage(small, 0, 0, mW, mH, 0, 0, w, h)
   tCtx.filter = 'none'
 
-  // Mirror to match the canvas (video is drawn mirrored)
+  // Mirror to match the canvas (video is drawn mirrored), then composite
   ctx.save()
   ctx.translate(w, 0)
   ctx.scale(-1, 1)
-  // Debug: use source-over so colours show clearly; normal: color blend mode
-  ctx.globalCompositeOperation = debug ? 'source-over' : 'color'
-  ctx.globalAlpha = debug ? 0.75 : 0.88
-  ctx.drawImage(tmp, 0, 0)
+
+  if (debug) {
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.globalAlpha = 0.75
+    ctx.drawImage(tmp, 0, 0)
+  } else {
+    // Pass 1 — 'color' blend: shifts hue + saturation, keeps original luminosity.
+    // Gives a natural tint where light hair stays light and dark hair stays dark.
+    ctx.globalCompositeOperation = 'color'
+    ctx.globalAlpha = 0.92
+    ctx.drawImage(tmp, 0, 0)
+
+    // Pass 2 — 'source-over' at low opacity: ensures the colour is visible even
+    // on very dark (near-black) hair where 'color' mode alone is imperceptible.
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.globalAlpha = 0.30
+    ctx.drawImage(tmp, 0, 0)
+  }
+
   ctx.restore()
 }
 
