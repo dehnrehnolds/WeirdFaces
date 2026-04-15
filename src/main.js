@@ -13,13 +13,14 @@ const faceSwapError  = document.getElementById('face-swap-error')
 const faceSwapErrMsg = document.getElementById('face-swap-error-msg')
 const hairDebugBtn   = document.getElementById('hair-debug-btn')
 
-let activeFilter   = 'none'
-let hairDebug      = false
-let hairColor      = { h: 30, s: 0.65, l: 0.30 }
-let detector       = null
-let segmenter      = null
-let cachedHairMask = null   // Uint8Array (256×256 category mask), null until first seg run
-let segFrameCount  = 0
+let activeFilter    = 'none'
+let hairDebug       = false
+let hairColor       = { h: 30, s: 0.65, l: 0.30 }
+let detector        = null
+let segmenter       = null
+let segmenterStatus = 'not loaded'   // shown in debug overlay
+let cachedHairMask  = null   // Uint8Array (256×256 category mask), null until first seg run
+let segFrameCount   = 0
 
 const colorPicker = setupColorPicker(color => { hairColor = color })
 
@@ -76,19 +77,26 @@ async function startCamera() {
 // Lazy-load the hair segmenter only when the hair-color filter is first selected
 async function ensureSegmenter() {
   if (segmenter) return
-  const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm')
-  const filesetResolver = await vision.FilesetResolver.forVisionTasks(
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
-  )
-  segmenter = await vision.ImageSegmenter.createFromOptions(filesetResolver, {
-    baseOptions: {
-      modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.task',
-      delegate: 'CPU',
-    },
-    runningMode: 'VIDEO',
-    outputCategoryMask: true,
-    outputConfidenceMasks: false,
-  })
+  segmenterStatus = 'loading…'
+  try {
+    const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm')
+    const filesetResolver = await vision.FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+    )
+    segmenter = await vision.ImageSegmenter.createFromOptions(filesetResolver, {
+      baseOptions: {
+        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.task',
+        delegate: 'CPU',
+      },
+      runningMode: 'VIDEO',
+      outputCategoryMask: true,
+      outputConfidenceMasks: false,
+    })
+    segmenterStatus = 'ready'
+  } catch (err) {
+    segmenterStatus = 'error: ' + err.message
+    console.error('Segmenter load failed:', err)
+  }
 }
 
 async function loadDetector() {
@@ -145,7 +153,7 @@ function renderLoop() {
     } else if (activeFilter === 'hair-color') {
       // Hair color doesn't need face landmarks — draw once regardless of face count
       setFaceSwapError(null)
-      drawFilter(ctx, w, h, null, activeFilter, { hairColor, hairMask: cachedHairMask, hairDebug })
+      drawFilter(ctx, w, h, null, activeFilter, { hairColor, hairMask: cachedHairMask, hairDebug, segmenterStatus })
     } else {
       setFaceSwapError(null)
       for (const face of allFaces) {
