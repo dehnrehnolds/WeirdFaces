@@ -9,10 +9,6 @@ const FACE_OVAL         = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361,
 const LEFT_JAW  = [234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152]
 const RIGHT_JAW = [152, 377, 400, 378, 379, 365, 397, 288, 361, 323, 454]
 
-// Forehead arc from left temple (234) across top of head to right temple (454).
-// In the original video these go left→right; in the mirrored canvas they go right→left.
-const FOREHEAD_ARC = [234, 127, 162, 21, 54, 103, 67, 109, 10, 338, 297, 332, 284, 251, 389, 356, 454]
-
 // ── Coordinate helpers ────────────────────────────────────────────────────────
 function lm(landmarks, i, w, h) {
   return { x: landmarks[i].x * w, y: landmarks[i].y * h }
@@ -167,53 +163,55 @@ function hairCanvas(w, h) {
   return _hair
 }
 
-// ── HAIR COLOR ────────────────────────────────────────────────────────────────
-// Hair region = head-sized ellipse  MINUS  face oval.
-// The ellipse is bounded to the head so no background is colored.
-function drawHairColor(ctx, w, h, landmarks, hslColor) {
-  const { h: hue, s, l } = hslColor
-  const colorStr = `hsl(${Math.round(hue)},${Math.round(s * 100)}%,${Math.round(l * 100)}%)`
+// ── HSL → RGB helper ──────────────────────────────────────────────────────────
+function hslToRgb({ h, s, l }) {
+  const a = s * Math.min(l, 1 - l)
+  const f = n => {
+    const k = (n + h / 30) % 12
+    return Math.round((l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255)
+  }
+  return { r: f(0), g: f(8), b: f(4) }
+}
 
-  const { cx: faceCx, cy: faceCy, r: faceR } = getFaceCenter(landmarks, w, h)
+// ── HAIR COLOR ────────────────────────────────────────────────────────────────
+// Uses the ML segmentation mask (Uint8Array, 256×256) where category 1 = hair.
+// Falls back gracefully (no-op) until the segmenter delivers its first mask.
+function drawHairColor(ctx, w, h, hslColor, hairMask) {
+  if (!hairMask) return
+
+  const mW = 256, mH = 256
+  const imgData = new ImageData(mW, mH)
+  const { r, g, b } = hslToRgb(hslColor)
+
+  for (let i = 0; i < hairMask.length; i++) {
+    if (hairMask[i] === 1) {  // category 1 = hair
+      imgData.data[i * 4]     = r
+      imgData.data[i * 4 + 1] = g
+      imgData.data[i * 4 + 2] = b
+      imgData.data[i * 4 + 3] = 220
+    }
+  }
+
+  // Scale the 256×256 mask up to canvas size with edge feathering
+  const small = document.createElement('canvas')
+  small.width = mW; small.height = mH
+  small.getContext('2d').putImageData(imgData, 0, 0)
 
   const tmp  = hairCanvas(w, h)
   const tCtx = tmp.getContext('2d')
   tCtx.clearRect(0, 0, w, h)
+  tCtx.filter = 'blur(3px)'
+  tCtx.drawImage(small, 0, 0, mW, mH, 0, 0, w, h)
+  tCtx.filter = 'none'
 
-  const mirX = idx => w - landmarks[idx].x * w
-  const mirY = idx => landmarks[idx].y * h
-
-  // Outer sub-path: ellipse that approximates the full head including hair.
-  // Shifted up from the face center because hair sits above the face.
-  const headCx = faceCx
-  const headCy = faceCy - faceR * 0.28   // shift up: hair is above face center
-  const headRx = faceR * 1.12            // slightly wider than face for side hair
-  const headRy = faceR * 1.52            // taller to cover hair above head
-
-  tCtx.beginPath()
-  tCtx.ellipse(headCx, headCy, headRx, headRy, 0, 0, Math.PI * 2)
-
-  // Inner sub-path: face oval punched out with evenodd so face skin stays uncolored
-  FACE_OVAL.forEach((idx, i) => {
-    i === 0 ? tCtx.moveTo(mirX(idx), mirY(idx)) : tCtx.lineTo(mirX(idx), mirY(idx))
-  })
-  tCtx.closePath()
-
-  tCtx.fillStyle = colorStr
-  tCtx.fill('evenodd')
-
-  // Composite onto main canvas.
-  // 'color' blend mode: applies hue+saturation while keeping pixel luminosity,
-  // so dark hair stays dark-tinted and light hair stays light-tinted.
-  // blur() feathers the ellipse edge into the hairline naturally.
+  // Mirror to match the canvas (video is drawn mirrored), then composite
+  // with 'color' blend mode: changes hue/sat while preserving pixel luminosity
   ctx.save()
-  ctx.filter = 'blur(8px)'
+  ctx.translate(w, 0)
+  ctx.scale(-1, 1)
   ctx.globalCompositeOperation = 'color'
-  ctx.globalAlpha = 0.85
+  ctx.globalAlpha = 0.88
   ctx.drawImage(tmp, 0, 0)
-  ctx.filter = 'none'
-  ctx.globalAlpha = 1
-  ctx.globalCompositeOperation = 'source-over'
   ctx.restore()
 }
 
@@ -226,7 +224,7 @@ export function drawFilter(ctx, w, h, landmarks, filter, opts = {}) {
     case 'big-nose':     withMirror(ctx, w, () => drawBigNose(ctx, w, h, landmarks));   break
     case 'tiny-mouth':   withMirror(ctx, w, () => drawTinyMouth(ctx, w, h, landmarks)); break
     case 'beard':        withMirror(ctx, w, () => drawBeard(ctx, w, h, landmarks));     break
-    case 'hair-color':   drawHairColor(ctx, w, h, landmarks, opts.hairColor ?? { h: 30, s: 0.65, l: 0.30 }); break
+    case 'hair-color':   drawHairColor(ctx, w, h, opts.hairColor ?? { h: 30, s: 0.65, l: 0.30 }, opts.hairMask ?? null); break
     case 'big-eyes':     drawBigEyesWarp(ctx, w, h, landmarks);    break
     case 'big-mouth':    drawBigMouthWarp(ctx, w, h, landmarks);   break
     case 'big-head':     drawBigHeadWarp(ctx, w, h, landmarks);    break

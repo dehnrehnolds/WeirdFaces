@@ -12,9 +12,12 @@ const filterBtns     = document.querySelectorAll('.filter-btn')
 const faceSwapError  = document.getElementById('face-swap-error')
 const faceSwapErrMsg = document.getElementById('face-swap-error-msg')
 
-let activeFilter = 'none'
-let hairColor    = { h: 30, s: 0.65, l: 0.30 }
-let detector     = null
+let activeFilter   = 'none'
+let hairColor      = { h: 30, s: 0.65, l: 0.30 }
+let detector       = null
+let segmenter      = null
+let cachedHairMask = null   // Uint8Array (256×256 category mask), null until first seg run
+let segFrameCount  = 0
 
 const colorPicker = setupColorPicker(color => { hairColor = color })
 
@@ -37,7 +40,7 @@ filterBtns.forEach(btn => {
     filterBtns.forEach(b => b.classList.remove('active'))
     btn.classList.add('active')
     activeFilter = btn.dataset.filter
-    if (activeFilter === 'hair-color') colorPicker.show()
+    if (activeFilter === 'hair-color') { colorPicker.show(); ensureSegmenter() }
     else colorPicker.hide()
   })
 })
@@ -53,6 +56,24 @@ async function startCamera() {
   canvas.width = video.videoWidth
   canvas.height = video.videoHeight
   video.play()
+}
+
+// Lazy-load the hair segmenter only when the hair-color filter is first selected
+async function ensureSegmenter() {
+  if (segmenter) return
+  const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm')
+  const filesetResolver = await vision.FilesetResolver.forVisionTasks(
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+  )
+  segmenter = await vision.ImageSegmenter.createFromOptions(filesetResolver, {
+    baseOptions: {
+      modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.task',
+      delegate: 'GPU',
+    },
+    runningMode: 'VIDEO',
+    outputCategoryMask: true,
+    outputConfidenceMasks: false,
+  })
 }
 
 async function loadDetector() {
@@ -86,6 +107,16 @@ function renderLoop() {
     const results  = detector.detectForVideo(video, performance.now())
     const allFaces = results.faceLandmarks ?? []
 
+    // Run hair segmentation every 2nd frame (hair moves slowly enough)
+    if (activeFilter === 'hair-color' && segmenter) {
+      segFrameCount++
+      if (segFrameCount % 2 === 1) {
+        segmenter.segmentForVideo(video, performance.now(), result => {
+          cachedHairMask = result.categoryMask.getAsUint8Array()
+        })
+      }
+    }
+
     if (activeFilter === 'face-swap') {
       if (allFaces.length >= 2) {
         setFaceSwapError(null)
@@ -99,7 +130,7 @@ function renderLoop() {
     } else {
       setFaceSwapError(null)
       for (const face of allFaces) {
-        drawFilter(ctx, w, h, face, activeFilter, { hairColor })
+        drawFilter(ctx, w, h, face, activeFilter, { hairColor, hairMask: cachedHairMask })
       }
     }
   }
