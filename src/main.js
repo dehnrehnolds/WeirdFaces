@@ -68,7 +68,7 @@ async function ensureSegmenter() {
   segmenter = await vision.ImageSegmenter.createFromOptions(filesetResolver, {
     baseOptions: {
       modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.task',
-      delegate: 'GPU',
+      delegate: 'CPU',
     },
     runningMode: 'VIDEO',
     outputCategoryMask: true,
@@ -112,7 +112,7 @@ function renderLoop() {
       segFrameCount++
       if (segFrameCount % 2 === 1) {
         segmenter.segmentForVideo(video, performance.now(), result => {
-          cachedHairMask = result.categoryMask.getAsUint8Array()
+          cachedHairMask = new Uint8Array(result.categoryMask.getAsUint8Array())
         })
       }
     }
@@ -127,6 +127,10 @@ function renderLoop() {
           : '🫂 Need 2 faces in frame to swap'
         setFaceSwapError(msg)
       }
+    } else if (activeFilter === 'hair-color') {
+      // Hair color doesn't need face landmarks — draw once regardless of face count
+      setFaceSwapError(null)
+      drawFilter(ctx, w, h, null, activeFilter, { hairColor, hairMask: cachedHairMask })
     } else {
       setFaceSwapError(null)
       for (const face of allFaces) {
