@@ -126,19 +126,10 @@ function renderLoop() {
   ctx.drawImage(video, 0, 0, w, h)
   ctx.restore()
 
-  if (detector && video.readyState >= 2) {
+  // ── Face-landmark filters (need detector) ────────────────────────────────
+  if (activeFilter !== 'hair-color' && detector && video.readyState >= 2) {
     const results  = detector.detectForVideo(video, performance.now())
     const allFaces = results.faceLandmarks ?? []
-
-    // Run hair segmentation every 2nd frame (hair moves slowly enough)
-    if (activeFilter === 'hair-color' && segmenter) {
-      segFrameCount++
-      if (segFrameCount % 2 === 1) {
-        segmenter.segmentForVideo(video, performance.now(), result => {
-          cachedHairMask = new Uint8Array(result.categoryMask.getAsUint8Array())
-        })
-      }
-    }
 
     if (activeFilter === 'face-swap') {
       if (allFaces.length >= 2) {
@@ -150,37 +141,36 @@ function renderLoop() {
           : '🫂 Need 2 faces in frame to swap'
         setFaceSwapError(msg)
       }
-    } else if (activeFilter === 'hair-color') {
-      // Hair color doesn't need face landmarks — draw once regardless of face count
-      setFaceSwapError(null)
-      drawFilter(ctx, w, h, null, activeFilter, { hairColor, hairMask: cachedHairMask, hairDebug, segmenterStatus })
     } else {
       setFaceSwapError(null)
       for (const face of allFaces) {
-        drawFilter(ctx, w, h, face, activeFilter, { hairColor, hairMask: cachedHairMask })
+        drawFilter(ctx, w, h, face, activeFilter, { hairColor })
       }
     }
   }
 
-  // Debug status — drawn regardless of detector state so we always get feedback
-  // Positioned at top-center so it's always in the visible area on portrait phones
-  if (hairDebug && activeFilter === 'hair-color') {
-    let hairPx = 0
-    if (cachedHairMask) {
-      for (let i = 0; i < cachedHairMask.length; i++) if (cachedHairMask[i] === 1) hairPx++
+  // ── Hair color (uses segmenter, no face detector needed) ─────────────────
+  if (activeFilter === 'hair-color' && video.readyState >= 2) {
+    setFaceSwapError(null)
+    // Run segmentation every 2nd frame
+    if (segmenter) {
+      segFrameCount++
+      if (segFrameCount % 2 === 1) {
+        segmenter.segmentForVideo(video, performance.now(), result => {
+          cachedHairMask = new Uint8Array(result.categoryMask.getAsUint8Array())
+        })
+      }
     }
-    const line1 = `det:${detector ? 'ok' : 'null'}  seg:${segmenterStatus}`
-    const line2 = cachedHairMask ? `mask:yes  hair px:${hairPx}` : `mask:none`
-    ctx.save()
-    ctx.font = 'bold 14px monospace'
-    const tw = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width)
-    const x  = (w - tw) / 2 - 8
-    ctx.fillStyle = 'rgba(0,0,0,0.75)'
-    ctx.fillRect(x, 10, tw + 16, 56)
-    ctx.fillStyle = '#4ade80'
-    ctx.fillText(line1, x + 8, 34)
-    ctx.fillText(line2, x + 8, 54)
-    ctx.restore()
+    drawFilter(ctx, w, h, null, 'hair-color', { hairColor, hairMask: cachedHairMask, hairDebug, segmenterStatus })
+
+    // Update button label with live status (always visible, no canvas coord issues)
+    if (hairDebug) {
+      let hairPx = 0
+      if (cachedHairMask) for (let i = 0; i < cachedHairMask.length; i++) if (cachedHairMask[i] === 1) hairPx++
+      hairDebugBtn.textContent = `🔍 det:${detector ? 'ok' : 'no'}  seg:${segmenterStatus}  px:${hairPx}`
+    } else {
+      hairDebugBtn.textContent = '🔍 Debug'
+    }
   }
 
   requestAnimationFrame(renderLoop)
