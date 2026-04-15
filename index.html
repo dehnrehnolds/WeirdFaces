@@ -20,6 +20,25 @@
           <div class="spinner"></div>
           <p>Loading face detector...</p>
         </div>
+
+        <!-- ── Floating hair colour picker (overlaid on camera) ── -->
+        <button id="hair-swatch-btn" class="hidden" title="Pick hair colour"></button>
+        <div id="hair-picker" class="hidden">
+          <div id="hair-picker-main">
+            <canvas id="color-wheel" width="150" height="150"></canvas>
+            <canvas id="brightness-strip" width="28" height="150"></canvas>
+          </div>
+          <div class="hair-swatches">
+            <button class="hair-swatch"></button>
+            <button class="hair-swatch"></button>
+            <button class="hair-swatch"></button>
+            <button class="hair-swatch"></button>
+            <button class="hair-swatch"></button>
+            <button class="hair-swatch"></button>
+            <button class="hair-swatch"></button>
+            <button class="hair-swatch"></button>
+          </div>
+        </div>
       </div>
 
       <div id="filters">
@@ -39,28 +58,7 @@
         <button class="filter-btn" data-filter="hair-color">💇 Hair Color</button>
       </div>
 
-      <!-- ── Hair color picker (shown only when Hair Color filter is active) ── -->
-      <div id="hair-picker" class="hidden">
-        <div id="hair-picker-main">
-          <canvas id="color-wheel" width="150" height="150"></canvas>
-          <div id="hair-picker-right">
-            <div id="hair-color-preview"></div>
-            <canvas id="brightness-strip" width="32" height="120"></canvas>
-          </div>
-        </div>
-        <div class="hair-swatches">
-          <button class="hair-swatch" title="Black"></button>
-          <button class="hair-swatch" title="Dark Brown"></button>
-          <button class="hair-swatch" title="Brown"></button>
-          <button class="hair-swatch" title="Blonde"></button>
-          <button class="hair-swatch" title="Red"></button>
-          <button class="hair-swatch" title="Pink"></button>
-          <button class="hair-swatch" title="Blue"></button>
-          <button class="hair-swatch" title="Purple"></button>
-        </div>
-      </div>
-
-      <div id="face-swap-error" class="hidden">
+<div id="face-swap-error" class="hidden">
         <span id="face-swap-error-msg"></span>
       </div>
 

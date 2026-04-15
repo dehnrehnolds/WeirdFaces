@@ -340,24 +340,74 @@ header h1 {
   color: #f87171;
 }
 
-/* ── Hair color picker ───────────────────────────────────────────────────── */
+/* ── Floating hair swatch toggle button ──────────────────────────────────── */
+#hair-swatch-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.4);
+  cursor: pointer;
+  padding: 0;
+  background: hsl(25, 55%, 28%);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  transition: transform 0.15s, box-shadow 0.15s;
+  touch-action: manipulation;
+  z-index: 30;
+}
+
+#hair-swatch-btn.hidden {
+  display: none;
+}
+
+#hair-swatch-btn:active {
+  transform: scale(0.92);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.5);
+}
+
+/* ── Compact floating picker panel ───────────────────────────────────────── */
 #hair-picker {
+  position: absolute;
+  bottom: 72px;
+  right: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px;
-  background: #1a1a1a;
-  border-top: 1px solid #333;
+  padding: 14px;
+  background: rgba(24, 24, 28, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  z-index: 30;
+  animation: pickerFadeIn 0.2s ease;
 }
 
 #hair-picker.hidden {
   display: none;
 }
 
+#hair-picker.fading {
+  animation: pickerFadeOut 0.3s ease forwards;
+}
+
+@keyframes pickerFadeIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+
+@keyframes pickerFadeOut {
+  from { opacity: 1; transform: translateY(0)   scale(1);    }
+  to   { opacity: 0; transform: translateY(8px) scale(0.96); }
+}
+
 #hair-picker-main {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
 }
 
@@ -365,21 +415,6 @@ header h1 {
   border-radius: 50%;
   cursor: crosshair;
   touch-action: none;
-  flex-shrink: 0;
-}
-
-#hair-picker-right {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-#hair-color-preview {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 2px solid #555;
-  background: hsl(30, 65%, 30%);
   flex-shrink: 0;
 }
 
@@ -391,21 +426,20 @@ header h1 {
 
 .hair-swatches {
   display: flex;
-  gap: 8px;
+  gap: 7px;
 }
 
 .hair-swatch {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  border: 2px solid #444;
+  border: 2px solid rgba(255,255,255,0.2);
   cursor: pointer;
   padding: 0;
-  transition: border-color 0.15s, transform 0.1s;
+  transition: border-color 0.15s, transform 0.12s;
   touch-action: manipulation;
 }
 
-.hair-swatch:hover,
 .hair-swatch:active {
   border-color: #fff;
   transform: scale(1.2);
