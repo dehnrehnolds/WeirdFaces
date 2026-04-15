@@ -11,8 +11,10 @@ const snapBtn        = document.getElementById('snap-btn')
 const filterBtns     = document.querySelectorAll('.filter-btn')
 const faceSwapError  = document.getElementById('face-swap-error')
 const faceSwapErrMsg = document.getElementById('face-swap-error-msg')
+const hairDebugBtn   = document.getElementById('hair-debug-btn')
 
 let activeFilter   = 'none'
+let hairDebug      = false
 let hairColor      = { h: 30, s: 0.65, l: 0.30 }
 let detector       = null
 let segmenter      = null
@@ -20,6 +22,11 @@ let cachedHairMask = null   // Uint8Array (256×256 category mask), null until f
 let segFrameCount  = 0
 
 const colorPicker = setupColorPicker(color => { hairColor = color })
+
+hairDebugBtn.addEventListener('click', () => {
+  hairDebug = !hairDebug
+  hairDebugBtn.classList.toggle('active', hairDebug)
+})
 
 // Show / hide the face-swap error banner (pass null to hide)
 function setFaceSwapError(msg) {
@@ -40,8 +47,16 @@ filterBtns.forEach(btn => {
     filterBtns.forEach(b => b.classList.remove('active'))
     btn.classList.add('active')
     activeFilter = btn.dataset.filter
-    if (activeFilter === 'hair-color') { colorPicker.show(); ensureSegmenter() }
-    else colorPicker.hide()
+    if (activeFilter === 'hair-color') {
+      colorPicker.show()
+      hairDebugBtn.classList.remove('hidden')
+      ensureSegmenter()
+    } else {
+      colorPicker.hide()
+      hairDebugBtn.classList.add('hidden')
+      hairDebug = false
+      hairDebugBtn.classList.remove('active')
+    }
   })
 })
 
@@ -130,7 +145,7 @@ function renderLoop() {
     } else if (activeFilter === 'hair-color') {
       // Hair color doesn't need face landmarks — draw once regardless of face count
       setFaceSwapError(null)
-      drawFilter(ctx, w, h, null, activeFilter, { hairColor, hairMask: cachedHairMask })
+      drawFilter(ctx, w, h, null, activeFilter, { hairColor, hairMask: cachedHairMask, hairDebug })
     } else {
       setFaceSwapError(null)
       for (const face of allFaces) {
