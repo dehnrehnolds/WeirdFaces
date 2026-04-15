@@ -239,7 +239,9 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
     }
   }
 
-  // Scale the 256×256 mask up to canvas size with edge feathering
+  // Scale the 256×256 mask up to canvas size.
+  // Use nearest-neighbour (no smoothing) so every detected pixel becomes a
+  // solid opaque block — bilinear + blur was diluting alpha to near-zero.
   const small = document.createElement('canvas')
   small.width = mW; small.height = mH
   small.getContext('2d').putImageData(imgData, 0, 0)
@@ -247,19 +249,16 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
   const tmp  = hairCanvas(w, h)
   const tCtx = tmp.getContext('2d')
   tCtx.clearRect(0, 0, w, h)
-  tCtx.filter = debug ? 'none' : 'blur(3px)'
+  tCtx.imageSmoothingEnabled = false          // nearest-neighbour → full alpha
   tCtx.drawImage(small, 0, 0, mW, mH, 0, 0, w, h)
-  tCtx.filter = 'none'
+  tCtx.imageSmoothingEnabled = true
 
   // Mirror to match the canvas (video is drawn mirrored), then composite
   ctx.save()
   ctx.translate(w, 0)
   ctx.scale(-1, 1)
-
-  // source-over at 60%: colour always shows regardless of original hair brightness.
-  // 40% of the original hair bleeds through → texture is still visible.
   ctx.globalCompositeOperation = 'source-over'
-  ctx.globalAlpha = debug ? 0.75 : 0.60
+  ctx.globalAlpha = debug ? 0.75 : 0.82
   ctx.drawImage(tmp, 0, 0)
 
   ctx.restore()
