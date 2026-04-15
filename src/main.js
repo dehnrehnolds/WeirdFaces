@@ -163,16 +163,23 @@ function renderLoop() {
   }
 
   // Debug status — drawn regardless of detector state so we always get feedback
+  // Positioned at top-center so it's always in the visible area on portrait phones
   if (hairDebug && activeFilter === 'hair-color') {
-    const hairPx = cachedHairMask ? Array.from(cachedHairMask).filter(v => v === 1).length : -1
-    const label  = `detector:${detector ? 'ok' : 'null'} seg:${segmenterStatus} hair:${hairPx < 0 ? 'no mask' : hairPx + 'px'}`
+    let hairPx = 0
+    if (cachedHairMask) {
+      for (let i = 0; i < cachedHairMask.length; i++) if (cachedHairMask[i] === 1) hairPx++
+    }
+    const line1 = `det:${detector ? 'ok' : 'null'}  seg:${segmenterStatus}`
+    const line2 = cachedHairMask ? `mask:yes  hair px:${hairPx}` : `mask:none`
     ctx.save()
-    ctx.font = 'bold 13px monospace'
-    const tw = ctx.measureText(label).width
-    ctx.fillStyle = 'rgba(0,0,0,0.7)'
-    ctx.fillRect(w - tw - 24, h - 36, tw + 16, 26)
+    ctx.font = 'bold 14px monospace'
+    const tw = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width)
+    const x  = (w - tw) / 2 - 8
+    ctx.fillStyle = 'rgba(0,0,0,0.75)'
+    ctx.fillRect(x, 10, tw + 16, 56)
     ctx.fillStyle = '#4ade80'
-    ctx.fillText(label, w - tw - 16, h - 18)
+    ctx.fillText(line1, x + 8, 34)
+    ctx.fillText(line2, x + 8, 54)
     ctx.restore()
   }
 
