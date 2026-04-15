@@ -176,19 +176,31 @@ function hslToRgb({ h, s, l }) {
 // ── HAIR COLOR ────────────────────────────────────────────────────────────────
 // Uses the ML segmentation mask (Uint8Array, 256×256) where category 1 = hair.
 // Falls back gracefully (no-op) until the segmenter delivers its first mask.
-function drawHairColor(ctx, w, h, hslColor, hairMask) {
+function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false) {
   if (!hairMask) return
 
   const mW = 256, mH = 256
   const imgData = new ImageData(mW, mH)
-  const { r, g, b } = hslToRgb(hslColor)
 
-  for (let i = 0; i < hairMask.length; i++) {
-    if (hairMask[i] === 1) {  // category 1 = hair
-      imgData.data[i * 4]     = r
-      imgData.data[i * 4 + 1] = g
-      imgData.data[i * 4 + 2] = b
-      imgData.data[i * 4 + 3] = 220
+  if (debug) {
+    // Debug mode: paint hair pixels bright green at full opacity
+    for (let i = 0; i < hairMask.length; i++) {
+      if (hairMask[i] === 1) {
+        imgData.data[i * 4]     = 0
+        imgData.data[i * 4 + 1] = 255
+        imgData.data[i * 4 + 2] = 0
+        imgData.data[i * 4 + 3] = 200
+      }
+    }
+  } else {
+    const { r, g, b } = hslToRgb(hslColor)
+    for (let i = 0; i < hairMask.length; i++) {
+      if (hairMask[i] === 1) {
+        imgData.data[i * 4]     = r
+        imgData.data[i * 4 + 1] = g
+        imgData.data[i * 4 + 2] = b
+        imgData.data[i * 4 + 3] = 220
+      }
     }
   }
 
@@ -204,13 +216,13 @@ function drawHairColor(ctx, w, h, hslColor, hairMask) {
   tCtx.drawImage(small, 0, 0, mW, mH, 0, 0, w, h)
   tCtx.filter = 'none'
 
-  // Mirror to match the canvas (video is drawn mirrored), then composite
-  // with 'color' blend mode: changes hue/sat while preserving pixel luminosity
+  // Mirror to match the canvas (video is drawn mirrored)
   ctx.save()
   ctx.translate(w, 0)
   ctx.scale(-1, 1)
-  ctx.globalCompositeOperation = 'color'
-  ctx.globalAlpha = 0.88
+  // Debug: use source-over so green shows clearly; normal: color blend mode
+  ctx.globalCompositeOperation = debug ? 'source-over' : 'color'
+  ctx.globalAlpha = debug ? 0.75 : 0.88
   ctx.drawImage(tmp, 0, 0)
   ctx.restore()
 }
@@ -224,7 +236,7 @@ export function drawFilter(ctx, w, h, landmarks, filter, opts = {}) {
     case 'big-nose':     withMirror(ctx, w, () => drawBigNose(ctx, w, h, landmarks));   break
     case 'tiny-mouth':   withMirror(ctx, w, () => drawTinyMouth(ctx, w, h, landmarks)); break
     case 'beard':        withMirror(ctx, w, () => drawBeard(ctx, w, h, landmarks));     break
-    case 'hair-color':   drawHairColor(ctx, w, h, opts.hairColor ?? { h: 30, s: 0.65, l: 0.30 }, opts.hairMask ?? null); break
+    case 'hair-color':   drawHairColor(ctx, w, h, opts.hairColor ?? { h: 30, s: 0.65, l: 0.30 }, opts.hairMask ?? null, opts.hairDebug ?? false); break
     case 'big-eyes':     drawBigEyesWarp(ctx, w, h, landmarks);    break
     case 'big-mouth':    drawBigMouthWarp(ctx, w, h, landmarks);   break
     case 'big-head':     drawBigHeadWarp(ctx, w, h, landmarks);    break
