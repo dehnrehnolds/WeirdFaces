@@ -162,6 +162,20 @@ function renderLoop() {
     }
   }
 
+  // Debug status — drawn regardless of detector state so we always get feedback
+  if (hairDebug && activeFilter === 'hair-color') {
+    const hairPx = cachedHairMask ? Array.from(cachedHairMask).filter(v => v === 1).length : -1
+    const label  = `detector:${detector ? 'ok' : 'null'} seg:${segmenterStatus} hair:${hairPx < 0 ? 'no mask' : hairPx + 'px'}`
+    ctx.save()
+    ctx.font = 'bold 13px monospace'
+    const tw = ctx.measureText(label).width
+    ctx.fillStyle = 'rgba(0,0,0,0.7)'
+    ctx.fillRect(w - tw - 24, h - 36, tw + 16, 26)
+    ctx.fillStyle = '#4ade80'
+    ctx.fillText(label, w - tw - 16, h - 18)
+    ctx.restore()
+  }
+
   requestAnimationFrame(renderLoop)
 }
 
