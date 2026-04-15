@@ -234,7 +234,7 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
         imgData.data[i * 4]     = r
         imgData.data[i * 4 + 1] = g
         imgData.data[i * 4 + 2] = b
-        imgData.data[i * 4 + 3] = 220
+        imgData.data[i * 4 + 3] = 255
       }
     }
   }
@@ -256,23 +256,11 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
   ctx.translate(w, 0)
   ctx.scale(-1, 1)
 
-  if (debug) {
-    ctx.globalCompositeOperation = 'source-over'
-    ctx.globalAlpha = 0.75
-    ctx.drawImage(tmp, 0, 0)
-  } else {
-    // Pass 1 — 'color' blend: shifts hue + saturation, keeps original luminosity.
-    // Gives a natural tint where light hair stays light and dark hair stays dark.
-    ctx.globalCompositeOperation = 'color'
-    ctx.globalAlpha = 0.92
-    ctx.drawImage(tmp, 0, 0)
-
-    // Pass 2 — 'source-over' at low opacity: ensures the colour is visible even
-    // on very dark (near-black) hair where 'color' mode alone is imperceptible.
-    ctx.globalCompositeOperation = 'source-over'
-    ctx.globalAlpha = 0.30
-    ctx.drawImage(tmp, 0, 0)
-  }
+  // source-over at 60%: colour always shows regardless of original hair brightness.
+  // 40% of the original hair bleeds through → texture is still visible.
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.globalAlpha = debug ? 0.75 : 0.60
+  ctx.drawImage(tmp, 0, 0)
 
   ctx.restore()
 }
