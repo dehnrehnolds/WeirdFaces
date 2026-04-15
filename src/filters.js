@@ -173,24 +173,59 @@ function hslToRgb({ h, s, l }) {
   return { r: f(0), g: f(8), b: f(4) }
 }
 
+// Category colours for debug overlay
+// 0=background, 1=hair, 2=body-skin, 3=face-skin, 4=clothes, 5=other
+const DEBUG_COLORS = [
+  null,                    // 0 background — transparent
+  [0,   255,   0, 220],   // 1 hair        — bright green
+  [255, 100,   0, 180],   // 2 body skin   — orange
+  [255, 220,   0, 180],   // 3 face skin   — yellow
+  [  0, 100, 255, 180],   // 4 clothes     — blue
+  [200,   0, 255, 180],   // 5 other       — purple
+]
+
 // ── HAIR COLOR ────────────────────────────────────────────────────────────────
 // Uses the ML segmentation mask (Uint8Array, 256×256) where category 1 = hair.
 // Falls back gracefully (no-op) until the segmenter delivers its first mask.
-function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false) {
+function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterStatus = '') {
+  // Debug status overlay — always draw when debug is on, even without a mask
+  if (debug) {
+    const counts = {}
+    if (hairMask) {
+      for (let i = 0; i < hairMask.length; i++) {
+        const cat = hairMask[i]
+        counts[cat] = (counts[cat] || 0) + 1
+      }
+    }
+    const hairPx = counts[1] || 0
+    const label  = hairMask
+      ? `segmenter: ${segmenterStatus} | hair px: ${hairPx} | cats: ${Object.keys(counts).sort().join(',')}`
+      : `segmenter: ${segmenterStatus} | no mask yet`
+
+    ctx.save()
+    ctx.font = 'bold 13px monospace'
+    ctx.fillStyle = 'rgba(0,0,0,0.65)'
+    ctx.fillRect(8, h - 36, ctx.measureText(label).width + 16, 26)
+    ctx.fillStyle = '#4ade80'
+    ctx.fillText(label, 16, h - 18)
+    ctx.restore()
+  }
+
   if (!hairMask) return
 
   const mW = 256, mH = 256
   const imgData = new ImageData(mW, mH)
 
   if (debug) {
-    // Debug mode: paint hair pixels bright green at full opacity
+    // Paint every category in a distinct colour so we can see what the model detects
     for (let i = 0; i < hairMask.length; i++) {
-      if (hairMask[i] === 1) {
-        imgData.data[i * 4]     = 0
-        imgData.data[i * 4 + 1] = 255
-        imgData.data[i * 4 + 2] = 0
-        imgData.data[i * 4 + 3] = 200
-      }
+      const cat = hairMask[i]
+      const col = DEBUG_COLORS[cat]
+      if (!col) continue
+      imgData.data[i * 4]     = col[0]
+      imgData.data[i * 4 + 1] = col[1]
+      imgData.data[i * 4 + 2] = col[2]
+      imgData.data[i * 4 + 3] = col[3]
     }
   } else {
     const { r, g, b } = hslToRgb(hslColor)
@@ -212,7 +247,7 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false) {
   const tmp  = hairCanvas(w, h)
   const tCtx = tmp.getContext('2d')
   tCtx.clearRect(0, 0, w, h)
-  tCtx.filter = 'blur(3px)'
+  tCtx.filter = debug ? 'none' : 'blur(3px)'
   tCtx.drawImage(small, 0, 0, mW, mH, 0, 0, w, h)
   tCtx.filter = 'none'
 
@@ -220,7 +255,7 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false) {
   ctx.save()
   ctx.translate(w, 0)
   ctx.scale(-1, 1)
-  // Debug: use source-over so green shows clearly; normal: color blend mode
+  // Debug: use source-over so colours show clearly; normal: color blend mode
   ctx.globalCompositeOperation = debug ? 'source-over' : 'color'
   ctx.globalAlpha = debug ? 0.75 : 0.88
   ctx.drawImage(tmp, 0, 0)
@@ -236,7 +271,7 @@ export function drawFilter(ctx, w, h, landmarks, filter, opts = {}) {
     case 'big-nose':     withMirror(ctx, w, () => drawBigNose(ctx, w, h, landmarks));   break
     case 'tiny-mouth':   withMirror(ctx, w, () => drawTinyMouth(ctx, w, h, landmarks)); break
     case 'beard':        withMirror(ctx, w, () => drawBeard(ctx, w, h, landmarks));     break
-    case 'hair-color':   drawHairColor(ctx, w, h, opts.hairColor ?? { h: 30, s: 0.65, l: 0.30 }, opts.hairMask ?? null, opts.hairDebug ?? false); break
+    case 'hair-color':   drawHairColor(ctx, w, h, opts.hairColor ?? { h: 30, s: 0.65, l: 0.30 }, opts.hairMask ?? null, opts.hairDebug ?? false, opts.segmenterStatus ?? ''); break
     case 'big-eyes':     drawBigEyesWarp(ctx, w, h, landmarks);    break
     case 'big-mouth':    drawBigMouthWarp(ctx, w, h, landmarks);   break
     case 'big-head':     drawBigHeadWarp(ctx, w, h, landmarks);    break
