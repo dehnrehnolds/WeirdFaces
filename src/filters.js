@@ -214,45 +214,21 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
   if (!hairMask) return
 
   const mW = 256, mH = 256
-  const imgData = new ImageData(mW, mH)
+  const scaleX = w / mW
+  const scaleY = h / mH
 
-  if (debug) {
-    // Paint every category in a distinct colour so we can see what the model detects
-    for (let i = 0; i < hairMask.length; i++) {
-      const cat = hairMask[i]
-      const col = DEBUG_COLORS[cat]
-      if (!col) continue
-      imgData.data[i * 4]     = col[0]
-      imgData.data[i * 4 + 1] = col[1]
-      imgData.data[i * 4 + 2] = col[2]
-      imgData.data[i * 4 + 3] = col[3]
-    }
-  } else {
-    const { r, g, b } = hslToRgb(hslColor)
-    for (let i = 0; i < hairMask.length; i++) {
-      if (hairMask[i] === 1) {
-        imgData.data[i * 4]     = r
-        imgData.data[i * 4 + 1] = g
-        imgData.data[i * 4 + 2] = b
-        imgData.data[i * 4 + 3] = 255
-      }
-    }
-  }
+  // Draw directly onto the main canvas — no intermediate canvas at all.
+  // iOS Safari silently drops drawImage() from detached (not-in-DOM) canvases.
+  ctx.save()
+  ctx.translate(w, 0)
+  ctx.scale(-1, 1)
+  ctx.globalAlpha = debug ? 0.75 : 0.85
 
-  // Put the 256×256 ImageData onto a small canvas, then draw it directly
-  // onto the main canvas — no intermediate full-size canvas, no blur dilution.
-  const small = document.createElement('canvas')
-  small.width = mW; small.height = mH
-  small.getContext('2d').putImageData(imgData, 0, 0)
-
-  // Populate small via fillRect row-runs — avoids iOS Safari putImageData+drawImage bug.
-  // Scan each row for consecutive hair pixels and draw them as one horizontal rect.
-  const sCtx = small.getContext('2d')
-  sCtx.clearRect(0, 0, mW, mH)
   if (!debug) {
     const { r, g, b } = hslToRgb(hslColor)
-    sCtx.fillStyle = `rgb(${r},${g},${b})`
+    ctx.fillStyle = `rgb(${r},${g},${b})`
   }
+
   for (let y = 0; y < mH; y++) {
     let runStart = -1
     for (let x = 0; x <= mW; x++) {
@@ -264,25 +240,21 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
           const cat = hairMask[y * mW + runStart]
           const col = DEBUG_COLORS[cat]
           if (col) {
-            sCtx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${col[3]/255})`
-            sCtx.fillRect(runStart, y, x - runStart, 1)
+            ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${col[3]/255})`
           }
-        } else {
-          sCtx.fillRect(runStart, y, x - runStart, 1)
         }
+        // Scale from 256×256 mask coords to full canvas size
+        ctx.fillRect(
+          runStart * scaleX,
+          y * scaleY,
+          (x - runStart) * scaleX,
+          Math.ceil(scaleY)
+        )
         runStart = -1
       }
     }
   }
 
-  // Draw directly onto main canvas, mirrored to match video orientation
-  ctx.save()
-  ctx.translate(w, 0)
-  ctx.scale(-1, 1)
-  ctx.globalAlpha = debug ? 0.75 : 0.85
-  ctx.imageSmoothingEnabled = false
-  ctx.drawImage(small, 0, 0, mW, mH, 0, 0, w, h)
-  ctx.imageSmoothingEnabled = true
   ctx.restore()
 }
 
