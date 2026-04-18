@@ -221,13 +221,14 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
 
   // Downsample: skip every Nth pixel to reduce fillRect calls (~16× fewer)
   const step = Math.max(1, Math.round(Math.max(mW, mH) / 200))
-  const blockW = w / mW * step
   const blockH = h / mH * step
 
   ctx.save()
   ctx.translate(w, 0)
   ctx.scale(-1, 1)
   ctx.globalAlpha = debug ? 0.6 : 0.45
+  // Soften blocky edges — GPU-accelerated, nearly free
+  if (!debug) ctx.filter = `blur(${Math.round(blockH * 0.8)}px)`
 
   if (!debug) {
     const { r, g, b } = hslToRgb(hslColor)
