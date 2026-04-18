@@ -216,27 +216,28 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
   // Mask may be 256×256 or full video resolution — detect dynamically
   const totalPx = hairMask.length
   const aspect  = w / h
-  // Solve: mW * mH = totalPx  AND  mW / mH ≈ aspect
   const mH = Math.round(Math.sqrt(totalPx / aspect))
   const mW = Math.round(totalPx / mH)
 
-  // If mask is already canvas-sized, scale factors are 1; otherwise scale up
-  const scaleX = w / mW
-  const scaleY = h / mH
+  // Downsample: skip every Nth pixel to reduce fillRect calls (~16× fewer)
+  const step = Math.max(1, Math.round(Math.max(mW, mH) / 200))
+  const blockW = w / mW * step
+  const blockH = h / mH * step
 
   ctx.save()
   ctx.translate(w, 0)
   ctx.scale(-1, 1)
-  ctx.globalAlpha = debug ? 0.75 : 0.85
+  ctx.globalAlpha = debug ? 0.6 : 0.45
 
   if (!debug) {
     const { r, g, b } = hslToRgb(hslColor)
     ctx.fillStyle = `rgb(${r},${g},${b})`
   }
 
-  for (let y = 0; y < mH; y++) {
+  const scaleX = w / mW
+  for (let y = 0; y < mH; y += step) {
     let runStart = -1
-    for (let x = 0; x <= mW; x++) {
+    for (let x = 0; x <= mW; x += step) {
       const isHair = x < mW && (debug ? hairMask[y * mW + x] > 0 : hairMask[y * mW + x] === 1)
       if (isHair) {
         if (runStart === -1) runStart = x
@@ -250,9 +251,9 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
         }
         ctx.fillRect(
           runStart * scaleX,
-          y * scaleY,
+          y * (h / mH),
           (x - runStart) * scaleX,
-          Math.ceil(scaleY)
+          blockH
         )
         runStart = -1
       }

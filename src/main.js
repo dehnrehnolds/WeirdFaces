@@ -152,14 +152,11 @@ function renderLoop() {
   // ── Hair color (uses segmenter, no face detector needed) ─────────────────
   if (activeFilter === 'hair-color' && video.readyState >= 2) {
     setFaceSwapError(null)
-    // Run segmentation every 2nd frame
+    // Run segmentation every frame for responsive tracking
     if (segmenter) {
-      segFrameCount++
-      if (segFrameCount % 2 === 1) {
-        segmenter.segmentForVideo(video, performance.now(), result => {
-          cachedHairMask = new Uint8Array(result.categoryMask.getAsUint8Array())
-        })
-      }
+      segmenter.segmentForVideo(video, performance.now(), result => {
+        cachedHairMask = new Uint8Array(result.categoryMask.getAsUint8Array())
+      })
     }
     drawFilter(ctx, w, h, null, 'hair-color', { hairColor, hairMask: cachedHairMask, hairDebug, segmenterStatus })
 
