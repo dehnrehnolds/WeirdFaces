@@ -245,24 +245,41 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
   small.width = mW; small.height = mH
   small.getContext('2d').putImageData(imgData, 0, 0)
 
-  // ── Diagnostic tests (remove once working) ──────────────────────────────
-  // Red rect — no transform (known working)
-  ctx.save()
-  ctx.fillStyle = 'rgba(255,0,0,0.9)'
-  ctx.fillRect(20, 20, 120, 120)
-  ctx.restore()
+  // Populate small via fillRect row-runs — avoids iOS Safari putImageData+drawImage bug.
+  // Scan each row for consecutive hair pixels and draw them as one horizontal rect.
+  const sCtx = small.getContext('2d')
+  sCtx.clearRect(0, 0, mW, mH)
+  if (!debug) {
+    const { r, g, b } = hslToRgb(hslColor)
+    sCtx.fillStyle = `rgb(${r},${g},${b})`
+  }
+  for (let y = 0; y < mH; y++) {
+    let runStart = -1
+    for (let x = 0; x <= mW; x++) {
+      const isHair = x < mW && (debug ? hairMask[y * mW + x] > 0 : hairMask[y * mW + x] === 1)
+      if (isHair) {
+        if (runStart === -1) runStart = x
+      } else if (runStart !== -1) {
+        if (debug) {
+          const cat = hairMask[y * mW + runStart]
+          const col = DEBUG_COLORS[cat]
+          if (col) {
+            sCtx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${col[3]/255})`
+            sCtx.fillRect(runStart, y, x - runStart, 1)
+          }
+        } else {
+          sCtx.fillRect(runStart, y, x - runStart, 1)
+        }
+        runStart = -1
+      }
+    }
+  }
 
-  // Green rect — WITH mirror transform (tests whether transform works at all)
+  // Draw directly onto main canvas, mirrored to match video orientation
   ctx.save()
   ctx.translate(w, 0)
   ctx.scale(-1, 1)
-  ctx.fillStyle = 'rgba(0,255,0,0.9)'
-  ctx.fillRect(20, 20, 120, 120)   // should appear on the RIGHT side if transform ok
-  ctx.restore()
-
-  // Blue tint — drawImage(small) WITHOUT transform (tests whether small has content)
-  ctx.save()
-  ctx.globalAlpha = 0.9
+  ctx.globalAlpha = debug ? 0.75 : 0.85
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(small, 0, 0, mW, mH, 0, 0, w, h)
   ctx.imageSmoothingEnabled = true
