@@ -213,23 +213,17 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
 
   if (!hairMask) return
 
-  const mW = 256, mH = 256
+  // Mask may be 256×256 or full video resolution — detect dynamically
+  const totalPx = hairMask.length
+  const aspect  = w / h
+  // Solve: mW * mH = totalPx  AND  mW / mH ≈ aspect
+  const mH = Math.round(Math.sqrt(totalPx / aspect))
+  const mW = Math.round(totalPx / mH)
+
+  // If mask is already canvas-sized, scale factors are 1; otherwise scale up
   const scaleX = w / mW
   const scaleY = h / mH
 
-  // === DIAGNOSTIC: bright red bar, no transform, to verify drawing works ===
-  ctx.save()
-  ctx.globalAlpha = 0.8
-  ctx.fillStyle = 'red'
-  ctx.fillRect(0, 0, w, 40)            // top bar, no mirror
-  ctx.fillStyle = 'lime'
-  ctx.fillRect(0, 40, w, 40)           // green bar below
-  ctx.restore()
-
-  // Count how many rects will be drawn
-  let rectCount = 0
-
-  // Draw directly onto the main canvas — no intermediate canvas at all.
   ctx.save()
   ctx.translate(w, 0)
   ctx.scale(-1, 1)
@@ -260,24 +254,12 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
           (x - runStart) * scaleX,
           Math.ceil(scaleY)
         )
-        rectCount++
         runStart = -1
       }
     }
   }
 
-  // === DIAGNOSTIC: blue bar INSIDE the mirror transform ===
-  ctx.fillStyle = 'blue'
-  ctx.globalAlpha = 0.8
-  ctx.fillRect(0, 80, w, 40)
-
   ctx.restore()
-
-  // Log once per second
-  if (!drawHairColor._lastLog || performance.now() - drawHairColor._lastLog > 1000) {
-    drawHairColor._lastLog = performance.now()
-    console.log(`[hair] rects: ${rectCount}, mask len: ${hairMask.length}, scaleX: ${scaleX.toFixed(2)}, scaleY: ${scaleY.toFixed(2)}, w: ${w}, h: ${h}`)
-  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
