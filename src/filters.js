@@ -239,28 +239,27 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
     }
   }
 
-  // Scale the 256×256 mask up to canvas size.
-  // Use nearest-neighbour (no smoothing) so every detected pixel becomes a
-  // solid opaque block — bilinear + blur was diluting alpha to near-zero.
+  // Put the 256×256 ImageData onto a small canvas, then draw it directly
+  // onto the main canvas — no intermediate full-size canvas, no blur dilution.
   const small = document.createElement('canvas')
   small.width = mW; small.height = mH
   small.getContext('2d').putImageData(imgData, 0, 0)
 
-  const tmp  = hairCanvas(w, h)
-  const tCtx = tmp.getContext('2d')
-  tCtx.clearRect(0, 0, w, h)
-  tCtx.imageSmoothingEnabled = false          // nearest-neighbour → full alpha
-  tCtx.drawImage(small, 0, 0, mW, mH, 0, 0, w, h)
-  tCtx.imageSmoothingEnabled = true
+  // Sanity check: paint a bright red square so we can confirm SOMETHING draws.
+  // (Remove once hair colour is confirmed working.)
+  ctx.save()
+  ctx.fillStyle = 'rgba(255,0,0,0.9)'
+  ctx.fillRect(20, 20, 120, 120)
+  ctx.restore()
 
-  // Mirror to match the canvas (video is drawn mirrored), then composite
+  // Hair colour: draw small (256×256) directly scaled to canvas, mirrored
   ctx.save()
   ctx.translate(w, 0)
   ctx.scale(-1, 1)
-  ctx.globalCompositeOperation = 'source-over'
-  ctx.globalAlpha = debug ? 0.75 : 0.82
-  ctx.drawImage(tmp, 0, 0)
-
+  ctx.globalAlpha = debug ? 0.75 : 0.85
+  ctx.imageSmoothingEnabled = false
+  ctx.drawImage(small, 0, 0, mW, mH, 0, 0, w, h)
+  ctx.imageSmoothingEnabled = true
   ctx.restore()
 }
 
