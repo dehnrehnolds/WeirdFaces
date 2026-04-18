@@ -245,18 +245,24 @@ function drawHairColor(ctx, w, h, hslColor, hairMask, debug = false, segmenterSt
   small.width = mW; small.height = mH
   small.getContext('2d').putImageData(imgData, 0, 0)
 
-  // Sanity check: paint a bright red square so we can confirm SOMETHING draws.
-  // (Remove once hair colour is confirmed working.)
+  // ── Diagnostic tests (remove once working) ──────────────────────────────
+  // Red rect — no transform (known working)
   ctx.save()
   ctx.fillStyle = 'rgba(255,0,0,0.9)'
   ctx.fillRect(20, 20, 120, 120)
   ctx.restore()
 
-  // Hair colour: draw small (256×256) directly scaled to canvas, mirrored
+  // Green rect — WITH mirror transform (tests whether transform works at all)
   ctx.save()
   ctx.translate(w, 0)
   ctx.scale(-1, 1)
-  ctx.globalAlpha = debug ? 0.75 : 0.85
+  ctx.fillStyle = 'rgba(0,255,0,0.9)'
+  ctx.fillRect(20, 20, 120, 120)   // should appear on the RIGHT side if transform ok
+  ctx.restore()
+
+  // Blue tint — drawImage(small) WITHOUT transform (tests whether small has content)
+  ctx.save()
+  ctx.globalAlpha = 0.9
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(small, 0, 0, mW, mH, 0, 0, w, h)
   ctx.imageSmoothingEnabled = true
